@@ -1,18 +1,97 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { relations } from "drizzle-orm";
 
+// === TABLE DEFINITIONS ===
+
+// 1. Portal Users (Admins/Operators) - Access the web UI
 export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
+  role: text("role", { enum: ["admin", "operator", "viewer"] }).notNull().default("viewer"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+// 2. VPN Users - The actual VPN clients (Read-only/Managed externally mostly, but tracked here)
+export const vpnUsers = pgTable("vpn_users", {
+  id: serial("id").primaryKey(),
+  commonName: text("common_name").notNull().unique(), // VPN certificate CN
+  status: text("status").notNull().default("offline"), // online, offline
+  totalBytesReceived: integer("total_bytes_received").default(0),
+  totalBytesSent: integer("total_bytes_sent").default(0),
+  lastConnected: timestamp("last_connected"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
-export type InsertUser = z.infer<typeof insertUserSchema>;
+// 3. Sessions - Historical and Active VPN sessions
+export const sessions = pgTable("sessions", {
+  id: serial("id").primaryKey(),
+  vpnUserId: integer("vpn_user_id").notNull(), // FK to vpnUsers
+  startTime: timestamp("start_time").notNull().defaultNow(),
+  endTime: timestamp("end_time"),
+  bytesReceived: integer("bytes_received").notNull().default(0),
+  bytesSent: integer("bytes_sent").notNull().default(0),
+  remoteIp: text("remote_ip").notNull(),
+  virtualIp: text("virtual_ip"),
+  status: text("status", { enum: ["active", "closed"] }).notNull().default("active"),
+});
+
+// 4. Audit Logs - Tracking admin actions
+export const auditLogs = pgTable("audit_logs", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id"), // FK to users (Portal User)
+  action: text("action").notNull(),
+  entityType: text("entity_type").notNull(), // e.g., "user", "configuration"
+  entityId: text("entity_id"),
+  details: text("details"),
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+// === RELATIONS ===
+
+export const sessionsRelations = relations(sessions, ({ one }) => ({
+  vpnUser: one(vpnUsers, {
+    fields: [sessions.vpnUserId],
+    references: [vpnUsers.id],
+  }),
+}));
+
+export const vpnUsersRelations = relations(vpnUsers, ({ many }) => ({
+  sessions: many(sessions),
+}));
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  user: one(users, {
+    fields: [auditLogs.userId],
+    references: [users.id],
+  }),
+}));
+
+// === ZOD SCHEMAS ===
+
+export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
+export const insertVpnUserSchema = createInsertSchema(vpnUsers).omit({ id: true, createdAt: true, totalBytesReceived: true, totalBytesSent: true, lastConnected: true });
+export const insertSessionSchema = createInsertSchema(sessions).omit({ id: true, startTime: true, endTime: true });
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, timestamp: true });
+
+// === TYPES ===
+
 export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type VpnUser = typeof vpnUsers.$inferSelect;
+export type InsertVpnUser = z.infer<typeof insertVpnUserSchema>;
+export type Session = typeof sessions.$inferSelect;
+export type InsertSession = z.infer<typeof insertSessionSchema>;
+export type AuditLog = typeof auditLogs.$inferSelect;
+
+// Request Types
+export type LoginRequest = { username: string; password: string };
+export type CreateUserRequest = InsertUser;
+export type UpdateUserRequest = Partial<InsertUser>;
+
+// Response Types
+export type UserResponse = Omit<User, "password">;
+export type SessionWithUser = Session & { vpnUser: VpnUser };
