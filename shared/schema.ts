@@ -10,15 +10,21 @@ export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
+  email: text("email"),
+  fullName: text("full_name"),
   role: text("role", { enum: ["admin", "operator", "viewer"] }).notNull().default("viewer"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// 2. VPN Users - The actual VPN clients (Read-only/Managed externally mostly, but tracked here)
+// 2. VPN Users - The actual VPN clients
 export const vpnUsers = pgTable("vpn_users", {
   id: serial("id").primaryKey(),
-  commonName: text("common_name").notNull().unique(), // VPN certificate CN
+  commonName: text("common_name").notNull().unique(), // VPN certificate CN (Username)
+  email: text("email"),
+  fullName: text("full_name"),
+  contact: text("contact"),
+  type: text("type", { enum: ["Employee", "Vendor", "Dealer", "Others"] }).notNull().default("Others"),
   status: text("status").notNull().default("offline"), // online, offline
   totalBytesReceived: integer("total_bytes_received").default(0),
   totalBytesSent: integer("total_bytes_sent").default(0),
