@@ -14,6 +14,7 @@ import VpnUsersPage from "@/pages/vpn-users";
 import PortalUsersPage from "@/pages/portal-users";
 import AuditLogsPage from "@/pages/audit-logs";
 import HistoryPage from "@/pages/history";
+import AccountingPage from "@/pages/accounting";
 import NotFound from "@/pages/not-found";
 
 // Protected Route Wrapper
@@ -55,6 +56,9 @@ function Router() {
       </Route>
       <Route path="/vpn-users">
         <ProtectedRoute component={VpnUsersPage} />
+      </Route>
+      <Route path="/accounting">
+        <ProtectedRoute component={AccountingPage} />
       </Route>
       <Route path="/history">
         <ProtectedRoute component={HistoryPage} />

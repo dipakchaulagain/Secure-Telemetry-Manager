@@ -67,6 +67,21 @@ export async function registerRoutes(
     res.json(user);
   });
 
+  app.patch("/api/vpn-users/:id", async (req, res) => {
+    if (!req.isAuthenticated() || req.user?.role === 'viewer') return res.sendStatus(403);
+    const id = parseInt(req.params.id);
+    const updates = req.body; // In a real app, validate with zod
+    const user = await storage.updateVpnUser(id, updates);
+    await storage.createAuditLog({
+      userId: req.user.id,
+      action: "UPDATE_VPN_USER",
+      entityType: "vpn_user",
+      entityId: String(user.id),
+      details: `Updated VPN user ${user.commonName}`
+    });
+    res.json(user);
+  });
+
   // === Sessions ===
   app.get(api.sessions.active.path, async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
@@ -78,6 +93,12 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const history = await storage.getSessionHistory();
     res.json(history);
+  });
+
+  app.get("/api/accounting", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const sessions = await storage.getAllSessions();
+    res.json(sessions);
   });
 
   app.post(api.sessions.kill.path, async (req, res) => {
@@ -133,13 +154,15 @@ async function seedDatabase() {
       username: "admin",
       password: "password123", // Basic seed password
       role: "admin",
-      isActive: true
+      isActive: true,
+      email: "admin@example.com",
+      fullName: "System Administrator"
     });
     
     // Create some VPN users
-    const vpnUser1 = await storage.createVpnUser({ commonName: "jdoe@company.com", status: "online" });
-    const vpnUser2 = await storage.createVpnUser({ commonName: "alice.smith@remote.org", status: "online" });
-    const vpnUser3 = await storage.createVpnUser({ commonName: "backup-service-01", status: "offline" });
+    const vpnUser1 = await storage.createVpnUser({ commonName: "jdoe@company.com", status: "online", type: "Employee", fullName: "John Doe", email: "jdoe@company.com" });
+    const vpnUser2 = await storage.createVpnUser({ commonName: "alice.smith@remote.org", status: "online", type: "Vendor", fullName: "Alice Smith", email: "alice@remote.org" });
+    const vpnUser3 = await storage.createVpnUser({ commonName: "backup-service-01", status: "offline", type: "Others" });
     
     // Create active sessions
     await storage.createSession({

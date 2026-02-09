@@ -1,4 +1,4 @@
-import { db, pool } from "./db";
+import { db } from "./db";
 import {
   users, vpnUsers, sessions, auditLogs,
   type User, type InsertUser,
@@ -9,6 +9,7 @@ import {
 import { eq, desc, and, isNull } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
+import { pool } from "./db";
 
 const PostgresSessionStore = connectPg(session);
 
@@ -25,10 +26,12 @@ export interface IStorage {
   getVpnUsers(): Promise<VpnUser[]>;
   getVpnUser(id: number): Promise<VpnUser | undefined>;
   createVpnUser(user: InsertVpnUser): Promise<VpnUser>;
+  updateVpnUser(id: number, user: Partial<InsertVpnUser>): Promise<VpnUser>;
 
   // Session Management
   getActiveSessions(): Promise<(Session & { vpnUser: VpnUser })[]>;
   getSessionHistory(): Promise<(Session & { vpnUser: VpnUser })[]>;
+  getAllSessions(): Promise<(Session & { vpnUser: VpnUser })[]>;
   createSession(session: InsertSession): Promise<Session>;
   endSession(id: number): Promise<void>;
 
@@ -87,6 +90,11 @@ export class DatabaseStorage implements IStorage {
     return newUser;
   }
 
+  async updateVpnUser(id: number, updates: Partial<InsertVpnUser>): Promise<VpnUser> {
+    const [user] = await db.update(vpnUsers).set(updates).where(eq(vpnUsers.id, id)).returning();
+    return user;
+  }
+
   // === Sessions ===
   async getActiveSessions(): Promise<(Session & { vpnUser: VpnUser })[]> {
     return await db.query.sessions.findMany({
@@ -106,6 +114,15 @@ export class DatabaseStorage implements IStorage {
       },
       orderBy: desc(sessions.endTime),
       limit: 100, // Limit history for performance
+    });
+  }
+
+  async getAllSessions(): Promise<(Session & { vpnUser: VpnUser })[]> {
+    return await db.query.sessions.findMany({
+      with: {
+        vpnUser: true,
+      },
+      orderBy: desc(sessions.startTime),
     });
   }
 
