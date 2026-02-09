@@ -1,0 +1,3163 @@
+# OpenVPN Telemetry Management System - Complete Web Application Architecture
+
+**Version:** 1.0.0  
+**Date:** February 9, 2026  
+**Target Platform:** Modern Web Browsers (Chrome, Firefox, Safari, Edge)  
+**Backend:** Python/Flask or Node.js/Express  
+**Database:** PostgreSQL 12+
+
+---
+
+## Table of Contents
+
+1. [Executive Summary](#executive-summary)
+2. [System Architecture Overview](#system-architecture-overview)
+3. [Technology Stack](#technology-stack)
+4. [Database Schema Implementation](#database-schema-implementation)
+5. [Backend API Architecture](#backend-api-architecture)
+6. [Frontend Application Architecture](#frontend-application-architecture)
+7. [Authentication & Authorization](#authentication--authorization)
+8. [Core Features & User Flows](#core-features--user-flows)
+9. [Real-Time Dashboard](#real-time-dashboard)
+10. [Deployment Architecture](#deployment-architecture)
+11. [Security Considerations](#security-considerations)
+12. [Monitoring & Observability](#monitoring--observability)
+13. [API Reference](#api-reference)
+14. [Implementation Roadmap](#implementation-roadmap)
+
+---
+
+## Executive Summary
+
+This document provides a complete architectural blueprint for building a production-grade web application to manage the OpenVPN Telemetry System. The application serves as a centralized monitoring and management console for:
+
+- **VPN User Monitoring** - Search, filter, and view VPN users (read-only - users created externally)
+- **Real-Time Session Monitoring** - Live dashboard showing active VPN connections
+- **Analytics & Reporting** - Historical session data, usage patterns, and compliance reports
+- **Portal User Management** - Create and manage admin portal users with role-based access
+- **Audit Logging** - Complete audit trail of all administrative actions
+
+### Key Objectives
+
+✅ **Real-time visibility** into VPN infrastructure  
+✅ **Comprehensive monitoring** of all VPN sessions and users  
+✅ **Compliance & audit trails** for security teams  
+✅ **Scalable architecture** supporting 10,000+ concurrent sessions  
+✅ **Secure admin portal** with role-based access control  
+
+---
+
+## System Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         USER LAYER                                  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐             │
+│  │   Admin      │  │   Operator   │  │    Viewer    │             │
+│  │   Portal     │  │   Portal     │  │    Portal    │             │
+│  │   User       │  │   User       │  │    User      │             │
+│  └──────────────┘  └──────────────┘  └──────────────┘             │
+│         │                  │                  │                     │
+│         └──────────────────┴──────────────────┘                     │
+│                            │                                        │
+│                   All users login required                          │
+└────────────────────────────┬────────────────────────────────────────┘
+             │                │                │
+             ▼                ▼                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    WEB APPLICATION TIER                             │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │               React SPA (Single Page Application)             │  │
+│  │  - Dashboard (Real-time)    - User Management                │  │
+│  │  - Session Browser          - Analytics & Reports            │  │
+│  │  - Configuration Manager    - Audit Logs                     │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                              │                                      │
+│                              │ HTTPS/WSS                           │
+│                              ▼                                      │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │                     NGINX Reverse Proxy                       │  │
+│  │  - SSL Termination      - Rate Limiting                      │  │
+│  │  - Load Balancing       - WebSocket Proxy                    │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+└────────────────────────────────┬────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                      API/BACKEND TIER                               │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  │
+│  │  Flask/FastAPI   │  │  Flask/FastAPI   │  │  Flask/FastAPI   │  │
+│  │  Instance #1     │  │  Instance #2     │  │  Instance #3     │  │
+│  └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘  │
+│           │                     │                     │             │
+│           └─────────────────────┴─────────────────────┘             │
+│                              │                                      │
+│  ┌───────────────────────────┼──────────────────────────────────┐  │
+│  │           Background Workers & Services                       │  │
+│  │  ┌─────────────────┐   ┌─────────────────┐                  │  │
+│  │  │  Celery Workers │   │  WebSocket       │                  │  │
+│  │  │  - Session      │   │  Server          │                  │  │
+│  │  │    Cleanup      │   │  (Socket.IO/     │                  │  │
+│  │  │  - Report Gen   │   │   FastAPI WS)    │                  │  │
+│  │  └─────────────────┘   └─────────────────┘                  │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+└────────────────────────────────┬────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                       DATA TIER                                     │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  │
+│  │   PostgreSQL     │  │     Redis        │  │   TimescaleDB    │  │
+│  │   Primary DB     │  │  - Session Cache │  │  (Time-series    │  │
+│  │  - VPN Users     │  │  - JWT Tokens    │  │   metrics)       │  │
+│  │  - Sessions      │  │  - Real-time     │  │  - Optional      │  │
+│  │  - Audit Logs    │  │    Sessions      │  │                  │  │
+│  └──────────────────┘  └──────────────────┘  └──────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+                                 ▲
+                                 │ Telemetry Events (POST /api/v1/events)
+                                 │
+┌─────────────────────────────────────────────────────────────────────┐
+│                    OPENVPN INFRASTRUCTURE                           │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  │
+│  │  OpenVPN Server  │  │  OpenVPN Server  │  │  OpenVPN Server  │  │
+│  │   vpn-prod-01    │  │   vpn-prod-02    │  │   vpn-prod-03    │  │
+│  │  + Telemetry     │  │  + Telemetry     │  │  + Telemetry     │  │
+│  │    Agent         │  │    Agent         │  │    Agent         │  │
+│  └──────────────────┘  └──────────────────┘  └──────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Technology Stack
+
+### Frontend
+
+| Component | Technology | Version | Purpose |
+|-----------|-----------|---------|---------|
+| **Framework** | React | 18.2+ | UI component library |
+| **Build Tool** | Vite | 5.0+ | Fast development and bundling |
+| **State Management** | Redux Toolkit | 2.0+ | Global state management |
+| **Routing** | React Router | 6.20+ | Client-side routing |
+| **UI Library** | Material-UI (MUI) | 5.14+ | Component library |
+| **Data Grid** | AG-Grid Community | 31.0+ | Advanced data tables |
+| **Charts** | Recharts | 2.10+ | Data visualization |
+| **Real-time** | Socket.IO Client | 4.7+ | WebSocket connections |
+| **HTTP Client** | Axios | 1.6+ | API requests |
+| **Forms** | React Hook Form | 7.49+ | Form validation |
+| **Date/Time** | date-fns | 3.0+ | Date manipulation |
+| **Icons** | Material Icons | 5.14+ | Icon set |
+
+### Backend (Option 1: Python/Flask)
+
+| Component | Technology | Version | Purpose |
+|-----------|-----------|---------|---------|
+| **Framework** | Flask | 3.0+ | Web framework |
+| **ASGI Server** | Gunicorn + Uvicorn | Latest | Production server |
+| **ORM** | SQLAlchemy | 2.0+ | Database ORM |
+| **Migrations** | Alembic | 1.13+ | Database migrations |
+| **Auth** | Flask-JWT-Extended | 4.6+ | JWT authentication |
+| **WebSockets** | Flask-SocketIO | 5.3+ | Real-time updates |
+| **Validation** | Marshmallow | 3.20+ | Request/response validation |
+| **Task Queue** | Celery | 5.3+ | Background jobs |
+| **Message Broker** | Redis | 7.2+ | Celery broker + cache |
+| **CORS** | Flask-CORS | 4.0+ | Cross-origin support |
+| **Testing** | Pytest | 8.0+ | Testing framework |
+
+### Backend (Option 2: Node.js/Express)
+
+| Component | Technology | Version | Purpose |
+|-----------|-----------|---------|---------|
+| **Runtime** | Node.js | 20 LTS | JavaScript runtime |
+| **Framework** | Express | 4.18+ | Web framework |
+| **ORM** | Sequelize | 6.35+ | Database ORM |
+| **Auth** | jsonwebtoken | 9.0+ | JWT authentication |
+| **WebSockets** | Socket.IO | 4.7+ | Real-time updates |
+| **Validation** | Joi | 17.12+ | Input validation |
+| **Task Queue** | Bull | 4.12+ | Background jobs |
+| **Testing** | Jest | 29.7+ | Testing framework |
+
+### Database & Infrastructure
+
+| Component | Technology | Version | Purpose |
+|-----------|-----------|---------|---------|
+| **Primary DB** | PostgreSQL | 14+ | Relational database |
+| **Cache/Queue** | Redis | 7.2+ | Session cache, pub/sub |
+| **Reverse Proxy** | NGINX | 1.24+ | Load balancer, SSL |
+| **Container** | Docker | 24.0+ | Containerization |
+| **Orchestration** | Docker Compose | 2.23+ | Local development |
+| **CI/CD** | GitHub Actions | - | Automation |
+| **Monitoring** | Prometheus + Grafana | Latest | Metrics & dashboards |
+
+---
+
+## Database Schema Implementation
+
+### Complete PostgreSQL Schema
+
+```sql
+-- ============================================================================
+-- OpenVPN Telemetry Database Schema
+-- PostgreSQL 14+
+-- ============================================================================
+
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- ============================================================================
+-- TABLES: VPN User Management
+-- ============================================================================
+
+CREATE TABLE vpn_user (
+    id BIGSERIAL PRIMARY KEY,
+    common_name VARCHAR(255) NOT NULL UNIQUE,
+    vpn_status VARCHAR(50) DEFAULT 'inactive' CHECK (vpn_status IN ('active', 'inactive')),
+    cert_expiry_at TIMESTAMP WITH TIME ZONE,
+    revoked_at TIMESTAMP WITH TIME ZONE,
+    email VARCHAR(255),
+    contact_no VARCHAR(50),
+    user_type VARCHAR(50) CHECK (user_type IN ('internal', 'external', 'contractor', 'guest')),
+    business_status VARCHAR(50) CHECK (business_status IN ('active', 'suspended', 'terminated')),
+    last_vpn_seen_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for vpn_user
+CREATE INDEX idx_vpn_user_common_name ON vpn_user(common_name);
+CREATE INDEX idx_vpn_user_vpn_status ON vpn_user(vpn_status);
+CREATE INDEX idx_vpn_user_email ON vpn_user(email);
+CREATE INDEX idx_vpn_user_last_seen ON vpn_user(last_vpn_seen_at DESC);
+
+-- ============================================================================
+-- TABLES: VPN Session Tracking
+-- ============================================================================
+
+CREATE TABLE vpn_session (
+    id UUID PRIMARY KEY,  -- event_id from telemetry
+    vpn_user_id BIGINT NOT NULL REFERENCES vpn_user(id) ON DELETE CASCADE,
+    server_instance VARCHAR(255) NOT NULL,
+    real_ip VARCHAR(45),  -- IPv4 or IPv6
+    real_port INTEGER,
+    virtual_ip VARCHAR(45),
+    connected_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    last_seen_at TIMESTAMP WITH TIME ZONE,
+    disconnected_at TIMESTAMP WITH TIME ZONE,
+    bytes_in BIGINT DEFAULT 0,
+    bytes_out BIGINT DEFAULT 0,
+    session_status VARCHAR(50) DEFAULT 'active' CHECK (session_status IN ('active', 'disconnected', 'timeout')),
+    disconnect_reason VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for vpn_session
+CREATE INDEX idx_vpn_session_user_id ON vpn_session(vpn_user_id);
+CREATE INDEX idx_vpn_session_server ON vpn_session(server_instance);
+CREATE INDEX idx_vpn_session_status ON vpn_session(session_status);
+CREATE INDEX idx_vpn_session_connected_at ON vpn_session(connected_at DESC);
+CREATE INDEX idx_vpn_session_virtual_ip ON vpn_session(virtual_ip);
+CREATE INDEX idx_vpn_session_active_lookup ON vpn_session(vpn_user_id, server_instance, virtual_ip, session_status) 
+    WHERE session_status = 'active';
+
+-- ============================================================================
+-- TABLES: Client Configuration (CCD)
+-- ============================================================================
+
+CREATE TABLE vpn_user_ccd (
+    id BIGSERIAL PRIMARY KEY,
+    vpn_user_id BIGINT NOT NULL UNIQUE REFERENCES vpn_user(id) ON DELETE CASCADE,
+    ifconfig_ip VARCHAR(45),
+    ifconfig_netmask VARCHAR(45),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index for vpn_user_ccd
+CREATE INDEX idx_vpn_user_ccd_user_id ON vpn_user_ccd(vpn_user_id);
+
+-- ============================================================================
+-- TABLES: User Routing Rules
+-- ============================================================================
+
+CREATE TABLE vpn_user_route (
+    id BIGSERIAL PRIMARY KEY,
+    vpn_user_id BIGINT NOT NULL REFERENCES vpn_user(id) ON DELETE CASCADE,
+    route_type VARCHAR(20) NOT NULL CHECK (route_type IN ('push', 'iroute')),
+    network VARCHAR(45) NOT NULL,
+    netmask VARCHAR(45) NOT NULL,
+    gateway VARCHAR(45),
+    comment TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for vpn_user_route
+CREATE INDEX idx_vpn_user_route_user_id ON vpn_user_route(vpn_user_id);
+CREATE INDEX idx_vpn_user_route_type ON vpn_user_route(route_type);
+
+-- ============================================================================
+-- TABLES: Portal Users (Admins)
+-- ============================================================================
+
+CREATE TABLE portal_user (
+    id BIGSERIAL PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    email VARCHAR(255),
+    is_active BOOLEAN DEFAULT TRUE,
+    last_portal_login_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for portal_user
+CREATE INDEX idx_portal_user_username ON portal_user(username);
+CREATE INDEX idx_portal_user_active ON portal_user(is_active);
+
+-- ============================================================================
+-- TABLES: Role-Based Access Control
+-- ============================================================================
+
+CREATE TABLE portal_role (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT
+);
+
+-- Insert default roles
+INSERT INTO portal_role (name, description) VALUES
+    ('admin', 'Full system access - all permissions'),
+    ('operator', 'Operational access - manage users and sessions'),
+    ('viewer', 'Read-only access - view dashboards and reports'),
+    ('auditor', 'Audit access - view logs and compliance reports');
+
+CREATE TABLE portal_user_role (
+    portal_user_id BIGINT NOT NULL REFERENCES portal_user(id) ON DELETE CASCADE,
+    portal_role_id BIGINT NOT NULL REFERENCES portal_role(id) ON DELETE CASCADE,
+    PRIMARY KEY (portal_user_id, portal_role_id)
+);
+
+-- Indexes for portal_user_role
+CREATE INDEX idx_portal_user_role_user ON portal_user_role(portal_user_id);
+CREATE INDEX idx_portal_user_role_role ON portal_user_role(portal_role_id);
+
+-- ============================================================================
+-- TABLES: Audit Logging
+-- ============================================================================
+
+CREATE TABLE audit_log (
+    id BIGSERIAL PRIMARY KEY,
+    actor_portal_user_id BIGINT REFERENCES portal_user(id) ON DELETE SET NULL,
+    action VARCHAR(50) NOT NULL CHECK (action IN ('create', 'update', 'delete', 'revoke', 'approve', 'login', 'logout')),
+    object_type VARCHAR(50) NOT NULL,
+    object_id VARCHAR(255),
+    details_json JSONB,
+    ip_address VARCHAR(45),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for audit_log
+CREATE INDEX idx_audit_log_actor ON audit_log(actor_portal_user_id);
+CREATE INDEX idx_audit_log_created ON audit_log(created_at DESC);
+CREATE INDEX idx_audit_log_action ON audit_log(action);
+CREATE INDEX idx_audit_log_object ON audit_log(object_type, object_id);
+CREATE INDEX idx_audit_log_details ON audit_log USING GIN (details_json);
+
+-- ============================================================================
+-- MATERIALIZED VIEWS: Analytics & Reporting
+-- ============================================================================
+
+-- Active sessions summary (refreshed periodically)
+CREATE MATERIALIZED VIEW mv_active_sessions AS
+SELECT 
+    s.server_instance,
+    u.user_type,
+    COUNT(*) as session_count,
+    COUNT(DISTINCT u.id) as unique_users,
+    SUM(s.bytes_in) as total_bytes_in,
+    SUM(s.bytes_out) as total_bytes_out
+FROM vpn_session s
+JOIN vpn_user u ON s.vpn_user_id = u.id
+WHERE s.session_status = 'active'
+GROUP BY s.server_instance, u.user_type;
+
+CREATE UNIQUE INDEX idx_mv_active_sessions ON mv_active_sessions(server_instance, user_type);
+
+-- Daily usage statistics
+CREATE MATERIALIZED VIEW mv_daily_usage AS
+SELECT 
+    DATE(s.connected_at) as usage_date,
+    s.server_instance,
+    COUNT(DISTINCT s.id) as total_sessions,
+    COUNT(DISTINCT s.vpn_user_id) as unique_users,
+    SUM(s.bytes_in + s.bytes_out) as total_bytes,
+    AVG(EXTRACT(EPOCH FROM (COALESCE(s.disconnected_at, NOW()) - s.connected_at))) as avg_session_duration_seconds
+FROM vpn_session s
+WHERE s.connected_at >= CURRENT_DATE - INTERVAL '90 days'
+GROUP BY DATE(s.connected_at), s.server_instance;
+
+CREATE UNIQUE INDEX idx_mv_daily_usage ON mv_daily_usage(usage_date, server_instance);
+
+-- ============================================================================
+-- FUNCTIONS: Triggers and Automation
+-- ============================================================================
+
+-- Function: Update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Apply updated_at trigger to all tables
+CREATE TRIGGER update_vpn_user_updated_at BEFORE UPDATE ON vpn_user
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_vpn_session_updated_at BEFORE UPDATE ON vpn_session
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_vpn_user_ccd_updated_at BEFORE UPDATE ON vpn_user_ccd
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_vpn_user_route_updated_at BEFORE UPDATE ON vpn_user_route
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_portal_user_updated_at BEFORE UPDATE ON portal_user
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Function: Audit log trigger
+CREATE OR REPLACE FUNCTION audit_log_changes()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (TG_OP = 'DELETE') THEN
+        INSERT INTO audit_log (action, object_type, object_id, details_json)
+        VALUES ('delete', TG_TABLE_NAME, OLD.id::TEXT, row_to_json(OLD)::JSONB);
+        RETURN OLD;
+    ELSIF (TG_OP = 'UPDATE') THEN
+        INSERT INTO audit_log (action, object_type, object_id, details_json)
+        VALUES ('update', TG_TABLE_NAME, NEW.id::TEXT, 
+                jsonb_build_object('old', row_to_json(OLD)::JSONB, 'new', row_to_json(NEW)::JSONB));
+        RETURN NEW;
+    ELSIF (TG_OP = 'INSERT') THEN
+        INSERT INTO audit_log (action, object_type, object_id, details_json)
+        VALUES ('create', TG_TABLE_NAME, NEW.id::TEXT, row_to_json(NEW)::JSONB);
+        RETURN NEW;
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Apply audit triggers (optional - can be enabled selectively)
+-- CREATE TRIGGER audit_vpn_user AFTER INSERT OR UPDATE OR DELETE ON vpn_user
+--     FOR EACH ROW EXECUTE FUNCTION audit_log_changes();
+
+-- ============================================================================
+-- FUNCTIONS: Business Logic
+-- ============================================================================
+
+-- Function: Cleanup orphaned sessions
+CREATE OR REPLACE FUNCTION cleanup_orphaned_sessions(timeout_hours INTEGER DEFAULT 2)
+RETURNS INTEGER AS $$
+DECLARE
+    orphaned_count INTEGER;
+BEGIN
+    WITH updated AS (
+        UPDATE vpn_session
+        SET 
+            session_status = 'timeout',
+            disconnected_at = last_seen_at + INTERVAL '30 minutes',
+            disconnect_reason = 'timeout - no disconnect event received',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE 
+            session_status = 'active'
+            AND last_seen_at < CURRENT_TIMESTAMP - (timeout_hours || ' hours')::INTERVAL
+        RETURNING vpn_user_id
+    )
+    SELECT COUNT(*) INTO orphaned_count FROM updated;
+    
+    -- Update user status if no active sessions remain
+    UPDATE vpn_user u
+    SET 
+        vpn_status = 'inactive',
+        updated_at = CURRENT_TIMESTAMP
+    WHERE NOT EXISTS (
+        SELECT 1 FROM vpn_session s 
+        WHERE s.vpn_user_id = u.id 
+        AND s.session_status = 'active'
+    );
+    
+    RETURN orphaned_count;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function: Get active session count by user
+CREATE OR REPLACE FUNCTION get_user_active_sessions(user_id BIGINT)
+RETURNS INTEGER AS $$
+DECLARE
+    session_count INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO session_count
+    FROM vpn_session
+    WHERE vpn_user_id = user_id
+    AND session_status = 'active';
+    
+    RETURN session_count;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================================================
+-- VIEWS: Commonly Used Queries
+-- ============================================================================
+
+-- View: User with session summary
+CREATE OR REPLACE VIEW v_user_summary AS
+SELECT 
+    u.*,
+    COUNT(DISTINCT s.id) FILTER (WHERE s.session_status = 'active') as active_sessions,
+    COUNT(DISTINCT s.id) FILTER (WHERE s.connected_at >= CURRENT_DATE - INTERVAL '30 days') as sessions_last_30d,
+    SUM(s.bytes_in + s.bytes_out) FILTER (WHERE s.connected_at >= CURRENT_DATE - INTERVAL '30 days') as bytes_last_30d
+FROM vpn_user u
+LEFT JOIN vpn_session s ON u.id = s.vpn_user_id
+GROUP BY u.id;
+
+-- View: Active sessions with user details
+CREATE OR REPLACE VIEW v_active_sessions AS
+SELECT 
+    s.id as session_id,
+    s.server_instance,
+    s.virtual_ip,
+    s.real_ip,
+    s.real_port,
+    s.connected_at,
+    s.last_seen_at,
+    EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - s.connected_at)) as duration_seconds,
+    s.bytes_in,
+    s.bytes_out,
+    u.id as user_id,
+    u.common_name,
+    u.email,
+    u.user_type,
+    u.business_status
+FROM vpn_session s
+JOIN vpn_user u ON s.vpn_user_id = u.id
+WHERE s.session_status = 'active'
+ORDER BY s.connected_at DESC;
+
+-- ============================================================================
+-- INITIAL DATA: Create Default Admin User
+-- ============================================================================
+
+-- Create default admin user (password: 'changeme')
+-- Hash generated with: werkzeug.security.generate_password_hash('changeme')
+INSERT INTO portal_user (username, password_hash, email, is_active)
+VALUES (
+    'admin',
+    'pbkdf2:sha256:600000$8Mzq4cZO$e8f9f6b8c2d4a1b3c5e6f7g8h9i0j1k2l3m4n5o6p7q8r9s0t1u2v3w4x5y6z7',
+    'admin@example.com',
+    TRUE
+) ON CONFLICT (username) DO NOTHING;
+
+-- Assign admin role to default admin user
+INSERT INTO portal_user_role (portal_user_id, portal_role_id)
+SELECT u.id, r.id
+FROM portal_user u, portal_role r
+WHERE u.username = 'admin' AND r.name = 'admin'
+ON CONFLICT DO NOTHING;
+
+-- ============================================================================
+-- MAINTENANCE: Scheduled Jobs
+-- ============================================================================
+
+-- Schedule cleanup job (run via pg_cron extension or external cron)
+-- SELECT cron.schedule('cleanup-orphaned-sessions', '0 * * * *', 'SELECT cleanup_orphaned_sessions(2);');
+
+-- Schedule materialized view refresh
+-- SELECT cron.schedule('refresh-active-sessions', '*/5 * * * *', 'REFRESH MATERIALIZED VIEW CONCURRENTLY mv_active_sessions;');
+-- SELECT cron.schedule('refresh-daily-usage', '0 1 * * *', 'REFRESH MATERIALIZED VIEW CONCURRENTLY mv_daily_usage;');
+
+-- ============================================================================
+-- GRANTS: Application User Permissions
+-- ============================================================================
+
+-- Create application database user
+-- CREATE USER vpn_telemetry_app WITH PASSWORD 'secure_password_here';
+
+-- Grant necessary permissions
+-- GRANT CONNECT ON DATABASE vpn_telemetry TO vpn_telemetry_app;
+-- GRANT USAGE ON SCHEMA public TO vpn_telemetry_app;
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO vpn_telemetry_app;
+-- GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO vpn_telemetry_app;
+-- GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO vpn_telemetry_app;
+
+-- ============================================================================
+-- COMPLETED
+-- ============================================================================
+```
+
+---
+
+## Backend API Architecture
+
+### Project Structure (Python/Flask)
+
+```
+vpn-telemetry-backend/
+├── app/
+│   ├── __init__.py                 # Flask app factory
+│   ├── config.py                   # Configuration management
+│   ├── extensions.py               # Flask extensions (db, jwt, etc.)
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── vpn_user.py            # VPN user model
+│   │   ├── vpn_session.py         # Session model
+│   │   ├── vpn_user_ccd.py        # CCD model
+│   │   ├── vpn_user_route.py      # Route model
+│   │   ├── portal_user.py         # Admin user model
+│   │   ├── portal_role.py         # Role model
+│   │   └── audit_log.py           # Audit log model
+│   ├── schemas/
+│   │   ├── __init__.py
+│   │   ├── vpn_user_schema.py     # Request/response schemas
+│   │   ├── session_schema.py
+│   │   ├── auth_schema.py
+│   │   └── telemetry_schema.py
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── auth.py                # Authentication endpoints
+│   │   ├── telemetry.py           # Telemetry ingestion
+│   │   ├── vpn_users.py           # VPN users endpoints (read-only)
+│   │   ├── portal_users.py        # Portal users management (admin)
+│   │   ├── sessions.py            # Session queries
+│   │   ├── analytics.py           # Analytics endpoints
+│   │   ├── config.py              # Configuration endpoints
+│   │   └── audit.py               # Audit log endpoints
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── telemetry_service.py   # Business logic for telemetry
+│   │   ├── vpn_user_service.py    # VPN user queries (read-only)
+│   │   ├── portal_user_service.py # Portal user management
+│   │   ├── session_service.py     # Session management logic
+│   │   ├── certificate_service.py # Certificate operations
+│   │   └── audit_service.py       # Audit logging
+│   ├── tasks/
+│   │   ├── __init__.py
+│   │   ├── celery_app.py          # Celery configuration
+│   │   ├── session_cleanup.py     # Cleanup orphaned sessions
+│   │   ├── report_generation.py   # Generate reports
+│   │   └── certificate_renewal.py # Certificate monitoring
+│   ├── websocket/
+│   │   ├── __init__.py
+│   │   └── events.py              # WebSocket event handlers
+│   └── utils/
+│       ├── __init__.py
+│       ├── decorators.py          # Custom decorators (roles, etc.)
+│       ├── validators.py          # Input validators
+│       └── helpers.py             # Helper functions
+├── migrations/                     # Alembic migrations
+│   └── versions/
+├── tests/
+│   ├── conftest.py
+│   ├── test_auth.py
+│   ├── test_telemetry.py
+│   ├── test_users.py
+│   └── test_sessions.py
+├── docker/
+│   ├── Dockerfile
+│   └── docker-compose.yml
+├── requirements.txt
+├── requirements-dev.txt
+├── .env.example
+├── .gitignore
+├── pytest.ini
+├── alembic.ini
+└── run.py                         # Application entry point
+```
+
+### Core API Implementation
+
+#### 1. Application Factory (`app/__init__.py`)
+
+```python
+from flask import Flask
+from flask_cors import CORS
+from app.extensions import db, jwt, ma, migrate, socketio
+from app.config import config
+import logging
+
+def create_app(config_name='development'):
+    """Application factory pattern"""
+    app = Flask(__name__)
+    
+    # Load configuration
+    app.config.from_object(config[config_name])
+    
+    # Initialize extensions
+    db.init_app(app)
+    jwt.init_app(app)
+    ma.init_app(app)
+    migrate.init_app(app, db)
+    socketio.init_app(app, cors_allowed_origins=app.config['CORS_ORIGINS'])
+    
+    # CORS
+    CORS(app, origins=app.config['CORS_ORIGINS'], supports_credentials=True)
+    
+    # Register blueprints
+    from app.api import auth, telemetry, vpn_users, portal_users, sessions, analytics, config_api, audit
+    app.register_blueprint(auth.bp, url_prefix='/api/auth')
+    app.register_blueprint(telemetry.bp, url_prefix='/api/v1')
+    app.register_blueprint(vpn_users.bp, url_prefix='/api/vpn-users')
+    app.register_blueprint(portal_users.bp, url_prefix='/api/portal-users')
+    app.register_blueprint(sessions.bp, url_prefix='/api/sessions')
+    app.register_blueprint(analytics.bp, url_prefix='/api/analytics')
+    app.register_blueprint(config_api.bp, url_prefix='/api/config')
+    app.register_blueprint(audit.bp, url_prefix='/api/audit')
+    
+    # WebSocket events
+    from app.websocket import events
+    
+    # Error handlers
+    register_error_handlers(app)
+    
+    # Logging
+    setup_logging(app)
+    
+    return app
+
+def register_error_handlers(app):
+    """Register error handlers"""
+    @app.errorhandler(400)
+    def bad_request(error):
+        return {'error': 'Bad request', 'message': str(error)}, 400
+    
+    @app.errorhandler(401)
+    def unauthorized(error):
+        return {'error': 'Unauthorized', 'message': 'Authentication required'}, 401
+    
+    @app.errorhandler(403)
+    def forbidden(error):
+        return {'error': 'Forbidden', 'message': 'Insufficient permissions'}, 403
+    
+    @app.errorhandler(404)
+    def not_found(error):
+        return {'error': 'Not found', 'message': str(error)}, 404
+    
+    @app.errorhandler(500)
+    def internal_error(error):
+        app.logger.error(f'Internal error: {error}')
+        return {'error': 'Internal server error'}, 500
+
+def setup_logging(app):
+    """Configure application logging"""
+    if not app.debug:
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+        )
+```
+
+#### 2. Configuration (`app/config.py`)
+
+```python
+import os
+from datetime import timedelta
+
+class Config:
+    """Base configuration"""
+    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
+    
+    # Database
+    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', 'postgresql://localhost/vpn_telemetry')
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ECHO = False
+    
+    # JWT
+    JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', SECRET_KEY)
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
+    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
+    
+    # CORS
+    CORS_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:3000').split(',')
+    
+    # Redis
+    REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+    
+    # Celery
+    CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', REDIS_URL)
+    CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', REDIS_URL)
+    
+    # File uploads
+    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
+    
+    # Pagination
+    ITEMS_PER_PAGE = 50
+    MAX_ITEMS_PER_PAGE = 500
+
+class DevelopmentConfig(Config):
+    """Development configuration"""
+    DEBUG = True
+    SQLALCHEMY_ECHO = True
+
+class ProductionConfig(Config):
+    """Production configuration"""
+    DEBUG = False
+    
+class TestingConfig(Config):
+    """Testing configuration"""
+    TESTING = True
+    SQLALCHEMY_DATABASE_URI = 'postgresql://localhost/vpn_telemetry_test'
+
+config = {
+    'development': DevelopmentConfig,
+    'production': ProductionConfig,
+    'testing': TestingConfig,
+    'default': DevelopmentConfig
+}
+```
+
+#### 3. Telemetry Service (`app/services/telemetry_service.py`)
+
+```python
+from app.models import VPNUser, VPNSession
+from app.extensions import db
+from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
+class TelemetryService:
+    """Service for processing telemetry events"""
+    
+    @staticmethod
+    def process_events(server_id, events):
+        """
+        Process batch of telemetry events
+        
+        Args:
+            server_id: VPN server identifier
+            events: List of event dictionaries
+            
+        Returns:
+            dict: Processing statistics
+        """
+        stats = {
+            'events_received': len(events),
+            'sessions_created': 0,
+            'sessions_updated': 0,
+            'errors': []
+        }
+        
+        # Sort by sequence number
+        sorted_events = sorted(events, key=lambda e: e.get('seq', 0))
+        
+        for event in sorted_events:
+            try:
+                event_type = event.get('type')
+                
+                if event_type == 'SESSION_CONNECTED':
+                    created = TelemetryService._handle_session_connected(event, server_id)
+                    stats['sessions_created'] += created
+                    
+                elif event_type == 'SESSION_DISCONNECTED':
+                    updated = TelemetryService._handle_session_disconnected(event, server_id)
+                    stats['sessions_updated'] += updated
+                    
+                else:
+                    logger.warning(f"Unknown event type: {event_type}")
+                    
+            except Exception as e:
+                logger.error(f"Error processing event {event.get('event_id')}: {e}")
+                stats['errors'].append({
+                    'event_id': event.get('event_id'),
+                    'error': str(e)
+                })
+        
+        return stats
+    
+    @staticmethod
+    def _handle_session_connected(event, server_id):
+        """Handle SESSION_CONNECTED event"""
+        common_name = event.get('common_name')
+        event_id = event.get('event_id')
+        
+        if not common_name or not event_id:
+            logger.warning("Invalid connect event: missing required fields")
+            return 0
+        
+        # Find or create user
+        user = VPNUser.query.filter_by(common_name=common_name).first()
+        
+        if not user:
+            user = VPNUser(
+                common_name=common_name,
+                vpn_status='active',
+                last_vpn_seen_at=TelemetryService._parse_datetime(event.get('event_time_vpn'))
+            )
+            db.session.add(user)
+            db.session.flush()
+        else:
+            user.vpn_status = 'active'
+            user.last_vpn_seen_at = TelemetryService._parse_datetime(event.get('event_time_vpn'))
+        
+        # Check for duplicate
+        existing = VPNSession.query.get(event_id)
+        if existing:
+            logger.info(f"Duplicate connect event: {event_id}")
+            return 0
+        
+        # Create session
+        session = VPNSession(
+            id=event_id,
+            vpn_user_id=user.id,
+            server_instance=server_id,
+            real_ip=event.get('real_ip'),
+            real_port=int(event.get('real_port', 0)),
+            virtual_ip=event.get('virtual_ip'),
+            connected_at=TelemetryService._parse_datetime(event.get('event_time_vpn')),
+            last_seen_at=TelemetryService._parse_datetime(event.get('event_time_vpn')),
+            session_status='active'
+        )
+        
+        db.session.add(session)
+        db.session.commit()
+        
+        # Emit WebSocket event
+        from app.websocket.events import emit_session_connected
+        emit_session_connected(session.to_dict())
+        
+        logger.info(f"Created session {event_id} for {common_name}")
+        return 1
+    
+    @staticmethod
+    def _handle_session_disconnected(event, server_id):
+        """Handle SESSION_DISCONNECTED event"""
+        common_name = event.get('common_name')
+        virtual_ip = event.get('virtual_ip')
+        
+        if not common_name or not virtual_ip:
+            logger.warning("Invalid disconnect event: missing required fields")
+            return 0
+        
+        # Find user
+        user = VPNUser.query.filter_by(common_name=common_name).first()
+        if not user:
+            logger.warning(f"Disconnect event for unknown user: {common_name}")
+            return 0
+        
+        # Find active session
+        session = VPNSession.query.filter_by(
+            vpn_user_id=user.id,
+            server_instance=server_id,
+            virtual_ip=virtual_ip,
+            session_status='active'
+        ).order_by(VPNSession.connected_at.desc()).first()
+        
+        if not session:
+            logger.warning(f"Disconnect event for unknown session: {common_name} @ {virtual_ip}")
+            return 0
+        
+        # Close session
+        disconnect_time = TelemetryService._parse_datetime(event.get('event_time_vpn'))
+        session.disconnected_at = disconnect_time
+        session.session_status = 'disconnected'
+        session.disconnect_reason = 'normal'
+        
+        # Update user
+        user.last_vpn_seen_at = disconnect_time
+        
+        # Check for other active sessions
+        active_count = VPNSession.query.filter_by(
+            vpn_user_id=user.id,
+            session_status='active'
+        ).count()
+        
+        if active_count == 0:
+            user.vpn_status = 'inactive'
+        
+        db.session.commit()
+        
+        # Emit WebSocket event
+        from app.websocket.events import emit_session_disconnected
+        emit_session_disconnected(session.to_dict())
+        
+        logger.info(f"Closed session {session.id} for {common_name}")
+        return 1
+    
+    @staticmethod
+    def _parse_datetime(iso_string):
+        """Parse ISO 8601 datetime string"""
+        if not iso_string:
+            return datetime.utcnow()
+        try:
+            return datetime.fromisoformat(iso_string.replace('Z', '+00:00'))
+        except Exception:
+            return datetime.utcnow()
+```
+
+---
+
+## Frontend Pages Architecture
+
+All pages in the application require authentication. Unauthenticated users are redirected to the login page.
+
+### Page Structure Overview
+
+```
+/                           → Login Page (Public - Only Unauthenticated)
+├── /dashboard              → Dashboard (Protected - All Roles)
+├── /sessions               → Sessions Browser (Protected - All Roles)
+│   └── /sessions/:id       → Session Detail (Protected - All Roles)
+├── /vpn-users              → VPN Users List (Protected - All Roles - Read Only)
+│   └── /vpn-users/:id      → VPN User Detail (Protected - All Roles - Read Only)
+├── /analytics              → Analytics & Reports (Protected - All Roles)
+├── /portal-users           → Portal Users Management (Protected - Admin Only)
+│   ├── /portal-users/new   → Create Portal User (Protected - Admin Only)
+│   └── /portal-users/:id   → Edit Portal User (Protected - Admin Only)
+├── /audit-logs             → Audit Logs (Protected - Admin, Auditor)
+├── /settings               → User Settings (Protected - All Roles)
+└── /profile                → User Profile (Protected - All Roles)
+```
+
+### 1. Login Page (`/`)
+
+**Access:** Public (only visible when not authenticated)  
+**Purpose:** User authentication entry point
+
+**Features:**
+- Username/password login form
+- "Remember me" checkbox
+- Password visibility toggle
+- Form validation
+- Error messages for invalid credentials
+- Auto-redirect to dashboard if already logged in
+- JWT token storage in localStorage/sessionStorage
+
+**Components:**
+```tsx
+src/pages/Login/
+├── LoginPage.tsx           # Main login page component
+├── LoginForm.tsx           # Login form component
+└── LoginStyles.ts          # Page-specific styles
+```
+
+**User Flow:**
+1. User enters username and password
+2. Click "Login" button
+3. API call to `/api/auth/login`
+4. On success: Store JWT token → Redirect to `/dashboard`
+5. On failure: Display error message
+
+---
+
+### 2. Dashboard Page (`/dashboard`)
+
+**Access:** Protected - All authenticated roles  
+**Purpose:** Real-time overview of VPN infrastructure
+
+**Features:**
+- **Summary Cards:**
+  - Active Sessions Count (live)
+  - Total VPN Users
+  - Total Portal Users (admin only)
+  - Sessions Today
+  - Bandwidth Used Today
+
+- **Live Session Monitor:**
+  - Real-time session list (WebSocket)
+  - Recent connections (last 10)
+  - Recent disconnections (last 10)
+
+- **Server Status Grid:**
+  - Health status per server
+  - Active sessions per server
+  - CPU/Memory usage indicators
+
+- **Usage Charts:**
+  - Sessions over time (24 hours)
+  - Bandwidth trend (7 days)
+  - Top users by bandwidth
+
+- **Quick Actions:**
+  - View All Sessions
+  - View All VPN Users
+  - Generate Report (admin/operator)
+
+**Components:**
+```tsx
+src/pages/Dashboard/
+├── DashboardPage.tsx              # Main dashboard container
+├── components/
+│   ├── SummaryCards.tsx           # Metric summary cards
+│   ├── LiveSessionMonitor.tsx     # Real-time session feed
+│   ├── ServerStatusGrid.tsx       # Server health grid
+│   ├── UsageCharts.tsx            # Chart container
+│   └── QuickActions.tsx           # Action buttons
+```
+
+**WebSocket Events:**
+- `session_connected` → Add to live monitor
+- `session_disconnected` → Remove from live monitor
+- `stats_update` → Update summary cards
+
+---
+
+### 3. Sessions Browser Page (`/sessions`)
+
+**Access:** Protected - All authenticated roles  
+**Purpose:** Search, filter, and view all VPN sessions
+
+**Features:**
+- **Advanced Filters:**
+  - Status: Active / Disconnected / Timeout / All
+  - Date Range: Today / Last 7 Days / Last 30 Days / Custom
+  - Server: Multi-select dropdown
+  - VPN User: Search autocomplete
+  - Common Name: Text search
+  - IP Address: Text search (real_ip or virtual_ip)
+
+- **Data Table (AG-Grid):**
+  - Columns: Session ID, User, VPN IP, Real IP, Server, Connected At, Duration, Data In/Out, Status
+  - Sortable columns
+  - Resizable columns
+  - Column visibility toggle
+  - Pagination (50/100/200 per page)
+  - Row selection for bulk actions (admin only)
+
+- **Actions:**
+  - Click row → Navigate to session detail
+  - Export to CSV/Excel
+  - Export to PDF (selected rows)
+  - Terminate session (active sessions, admin only)
+
+- **Live Updates:**
+  - Auto-refresh every 30 seconds
+  - Manual refresh button
+  - Live badge showing connection status
+
+**Components:**
+```tsx
+src/pages/Sessions/
+├── SessionsPage.tsx               # Main sessions page
+├── components/
+│   ├── SessionsFilters.tsx        # Filter panel
+│   ├── SessionsTable.tsx          # AG-Grid table
+│   ├── SessionsToolbar.tsx        # Export/actions toolbar
+│   └── BulkActionsModal.tsx       # Bulk operations modal
+```
+
+**API Endpoints:**
+- `GET /api/sessions` - Fetch sessions with filters
+- `GET /api/sessions/export` - Export sessions
+- `DELETE /api/sessions/:id` - Terminate session (admin only)
+
+---
+
+### 4. Session Detail Page (`/sessions/:id`)
+
+**Access:** Protected - All authenticated roles  
+**Purpose:** View detailed information about a specific session
+
+**Features:**
+- **Session Overview:**
+  - Session ID, Status badge
+  - User information (common_name, email)
+  - Connection timestamps (connected_at, disconnected_at)
+  - Duration (formatted)
+  - Disconnect reason (if applicable)
+
+- **Network Information:**
+  - Real IP Address + Port
+  - Virtual IP Address
+  - Server Instance
+  - Gateway
+
+- **Traffic Statistics:**
+  - Bytes In (formatted)
+  - Bytes Out (formatted)
+  - Total Transfer
+  - Average Speed
+
+- **Timeline:**
+  - Connection event
+  - Major traffic milestones
+  - Disconnection event
+
+- **Actions:**
+  - Terminate session (if active, admin only)
+  - Export session details
+  - View user profile
+  - Back to sessions list
+
+**Components:**
+```tsx
+src/pages/SessionDetail/
+├── SessionDetailPage.tsx          # Main detail page
+├── components/
+│   ├── SessionOverview.tsx        # Overview section
+│   ├── NetworkInfo.tsx            # Network details
+│   ├── TrafficStats.tsx           # Traffic statistics
+│   ├── SessionTimeline.tsx        # Event timeline
+│   └── SessionActions.tsx         # Action buttons
+```
+
+---
+
+### 5. VPN Users List Page (`/vpn-users`)
+
+**Access:** Protected - All authenticated roles  
+**Purpose:** Search, filter, and view VPN users (READ ONLY)
+
+**Important:** VPN users are created externally (via OpenVPN certificate generation). This page is for monitoring only.
+
+**Features:**
+- **Search & Filters:**
+  - Common Name: Text search
+  - Email: Text search
+  - VPN Status: Active / Inactive / All
+  - User Type: Internal / External / Contractor / Guest / All
+  - Business Status: Active / Suspended / Terminated / All
+  - Last Seen: Last 24h / Last 7d / Last 30d / Never
+
+- **Data Table:**
+  - Columns: Common Name, Email, VPN Status, User Type, Business Status, Last Seen, Active Sessions
+  - Status badges with color coding
+  - Certificate expiry warnings
+  - Sortable/filterable columns
+
+- **Actions:**
+  - Click row → View user detail
+  - Export to CSV/Excel
+  - Refresh button
+
+**Components:**
+```tsx
+src/pages/VPNUsers/
+├── VPNUsersPage.tsx               # Main VPN users page
+├── components/
+│   ├── VPNUsersFilters.tsx        # Filter panel
+│   ├── VPNUsersTable.tsx          # Data table
+│   └── VPNUsersToolbar.tsx        # Export toolbar
+```
+
+**API Endpoints:**
+- `GET /api/vpn-users` - Fetch VPN users with filters
+- `GET /api/vpn-users/export` - Export users
+
+---
+
+### 6. VPN User Detail Page (`/vpn-users/:id`)
+
+**Access:** Protected - All authenticated roles  
+**Purpose:** View detailed information about a VPN user (READ ONLY)
+
+**Features:**
+- **User Information:**
+  - Common Name
+  - Email Address
+  - Contact Number
+  - User Type badge
+  - Business Status badge
+  - VPN Status badge
+
+- **Certificate Information:**
+  - Certificate Expiry Date
+  - Days Until Expiry (warning if < 30 days)
+  - Revocation Status
+  - Revoked At timestamp (if revoked)
+
+- **Activity Summary:**
+  - Last VPN Seen At
+  - Total Sessions (all time)
+  - Active Sessions Count
+  - Total Bandwidth Used (last 30 days)
+
+- **Recent Sessions:**
+  - Table showing last 10 sessions
+  - Quick view of connection history
+
+- **CCD Configuration (if exists):**
+  - Static IP Assignment
+  - Netmask
+
+- **Custom Routes (if exist):**
+  - Table of push/iroute rules
+  - Network, Netmask, Gateway
+
+- **Actions:**
+  - View all user sessions (filter sessions by user)
+  - Export user report
+  - Back to VPN users list
+
+**Components:**
+```tsx
+src/pages/VPNUserDetail/
+├── VPNUserDetailPage.tsx          # Main detail page
+├── components/
+│   ├── UserInfo.tsx               # User information section
+│   ├── CertificateInfo.tsx        # Certificate details
+│   ├── ActivitySummary.tsx        # Activity metrics
+│   ├── RecentSessions.tsx         # Recent sessions table
+│   ├── CCDConfig.tsx              # CCD configuration (read-only)
+│   └── CustomRoutes.tsx           # Routes table (read-only)
+```
+
+---
+
+### 7. Analytics & Reports Page (`/analytics`)
+
+**Access:** Protected - All authenticated roles  
+**Purpose:** Generate reports and view historical analytics
+
+**Features:**
+- **Report Types:**
+  - Usage Report (sessions over time)
+  - Bandwidth Report (data transfer trends)
+  - User Activity Report (per-user statistics)
+  - Server Utilization Report
+  - Compliance Report (audit trail summary)
+
+- **Report Configuration:**
+  - Date Range Picker
+  - Server Filter (multi-select)
+  - User Type Filter
+  - Export Format: PDF / Excel / CSV
+
+- **Visualizations:**
+  - Sessions Trend Chart (line/bar)
+  - Bandwidth Usage Chart (area)
+  - Top Users Chart (bar)
+  - Server Distribution Chart (pie)
+  - Peak Hours Heatmap
+
+- **Quick Stats:**
+  - Total Sessions (period)
+  - Unique Users (period)
+  - Total Bandwidth (period)
+  - Average Session Duration (period)
+
+- **Scheduled Reports (admin/operator):**
+  - Create scheduled reports
+  - Email delivery
+  - Frequency: Daily / Weekly / Monthly
+
+**Components:**
+```tsx
+src/pages/Analytics/
+├── AnalyticsPage.tsx              # Main analytics page
+├── components/
+│   ├── ReportBuilder.tsx          # Report configuration
+│   ├── ChartContainer.tsx         # Charts wrapper
+│   ├── SessionsTrend.tsx          # Sessions chart
+│   ├── BandwidthChart.tsx         # Bandwidth chart
+│   ├── TopUsersChart.tsx          # Top users chart
+│   ├── ServerDistribution.tsx     # Server pie chart
+│   ├── QuickStats.tsx             # Summary statistics
+│   └── ScheduledReports.tsx       # Scheduled reports manager
+```
+
+**API Endpoints:**
+- `GET /api/analytics/stats` - Fetch analytics data
+- `POST /api/analytics/export` - Export report
+- `GET /api/analytics/scheduled` - List scheduled reports
+- `POST /api/analytics/scheduled` - Create scheduled report
+
+---
+
+### 8. Portal Users Management Page (`/portal-users`)
+
+**Access:** Protected - Admin Only  
+**Purpose:** Manage admin portal users
+
+**Features:**
+- **User Table:**
+  - Columns: Username, Email, Roles, Status (Active/Inactive), Last Login, Created At
+  - Role badges
+  - Status toggle (active/inactive)
+
+- **Actions:**
+  - Create New Portal User (button)
+  - Edit User (click row)
+  - Activate/Deactivate User (toggle)
+  - Delete User (confirmation required)
+  - Reset Password
+
+- **Filters:**
+  - Role filter
+  - Status filter (active/inactive)
+  - Search by username/email
+
+**Components:**
+```tsx
+src/pages/PortalUsers/
+├── PortalUsersPage.tsx            # Main portal users page
+├── components/
+│   ├── PortalUsersTable.tsx       # Users table
+│   ├── PortalUserForm.tsx         # Create/edit form
+│   └── ConfirmDeleteDialog.tsx    # Delete confirmation
+```
+
+**API Endpoints:**
+- `GET /api/portal-users` - List portal users
+- `POST /api/portal-users` - Create portal user
+- `PUT /api/portal-users/:id` - Update portal user
+- `DELETE /api/portal-users/:id` - Delete portal user
+
+---
+
+### 9. Create/Edit Portal User Page (`/portal-users/new`, `/portal-users/:id`)
+
+**Access:** Protected - Admin Only  
+**Purpose:** Create new or edit existing portal user
+
+**Features:**
+- **User Form Fields:**
+  - Username (required, unique)
+  - Email (required, validated)
+  - Password (required for new, optional for edit)
+  - Confirm Password
+  - Roles (multi-select checkboxes):
+    - ☐ Admin
+    - ☐ Operator
+    - ☐ Viewer
+    - ☐ Auditor
+  - Active Status (toggle)
+
+- **Form Validation:**
+  - Username: 3-50 characters, alphanumeric + underscore
+  - Email: Valid email format
+  - Password: Min 8 characters, uppercase, lowercase, number, special char
+  - At least one role must be selected
+
+- **Actions:**
+  - Save (create/update)
+  - Cancel (navigate back)
+  - Delete (edit mode only, with confirmation)
+
+**Components:**
+```tsx
+src/pages/PortalUserForm/
+├── PortalUserFormPage.tsx         # Main form page
+├── components/
+│   ├── UserInfoForm.tsx           # Basic info fields
+│   ├── RoleSelector.tsx           # Role checkboxes
+│   └── PasswordFields.tsx         # Password input fields
+```
+
+---
+
+### 10. Audit Logs Page (`/audit-logs`)
+
+**Access:** Protected - Admin, Auditor  
+**Purpose:** View complete audit trail of administrative actions
+
+**Features:**
+- **Filters:**
+  - Date Range
+  - Action Type: Create / Update / Delete / Login / Logout / All
+  - Object Type: Portal User / VPN Session / All
+  - Actor (portal user who performed action)
+
+- **Audit Log Table:**
+  - Columns: Timestamp, Actor, Action, Object Type, Object ID, IP Address, Details
+  - Click row → Expand to show full JSON details
+  - Color-coded by action type
+
+- **Export:**
+  - Export filtered logs to CSV
+  - Export for compliance (PDF)
+
+- **Immutable:**
+  - No edit/delete actions (read-only)
+
+**Components:**
+```tsx
+src/pages/AuditLogs/
+├── AuditLogsPage.tsx              # Main audit logs page
+├── components/
+│   ├── AuditLogFilters.tsx        # Filter panel
+│   ├── AuditLogTable.tsx          # Logs table
+│   └── LogDetailsDialog.tsx       # Expanded details modal
+```
+
+**API Endpoints:**
+- `GET /api/audit-logs` - Fetch logs with filters
+- `GET /api/audit-logs/export` - Export logs
+
+---
+
+### 11. User Settings Page (`/settings`)
+
+**Access:** Protected - All authenticated roles  
+**Purpose:** User-specific application settings
+
+**Features:**
+- **Display Preferences:**
+  - Theme: Light / Dark / Auto
+  - Date Format: MM/DD/YYYY / DD/MM/YYYY / YYYY-MM-DD
+  - Time Format: 12-hour / 24-hour
+  - Timezone selection
+
+- **Dashboard Preferences:**
+  - Default page on login: Dashboard / Sessions / VPN Users
+  - Auto-refresh interval: 15s / 30s / 60s / Manual
+  - Items per page: 25 / 50 / 100
+
+- **Notifications (if implemented):**
+  - Email notifications on/off
+  - Browser notifications on/off
+
+**Components:**
+```tsx
+src/pages/Settings/
+├── SettingsPage.tsx               # Main settings page
+├── components/
+│   ├── DisplaySettings.tsx        # Theme, format settings
+│   ├── DashboardSettings.tsx      # Dashboard preferences
+│   └── NotificationSettings.tsx   # Notification options
+```
+
+---
+
+### 12. User Profile Page (`/profile`)
+
+**Access:** Protected - All authenticated roles  
+**Purpose:** View and edit current user's profile
+
+**Features:**
+- **Profile Information:**
+  - Username (read-only)
+  - Email (editable)
+  - Roles (read-only, displayed as badges)
+  - Last Login timestamp
+
+- **Change Password:**
+  - Current Password
+  - New Password
+  - Confirm New Password
+  - Password strength indicator
+
+- **Activity Summary:**
+  - Login history (last 10 logins)
+  - Actions performed (last 10 audit entries for this user)
+
+**Components:**
+```tsx
+src/pages/Profile/
+├── ProfilePage.tsx                # Main profile page
+├── components/
+│   ├── ProfileInfo.tsx            # Profile information
+│   ├── ChangePasswordForm.tsx     # Password change form
+│   └── ActivityHistory.tsx        # Recent activity
+```
+
+**API Endpoints:**
+- `GET /api/profile` - Get current user profile
+- `PUT /api/profile` - Update profile
+- `POST /api/profile/change-password` - Change password
+
+---
+
+### Route Protection Implementation
+
+All routes except `/` (login) are protected and require valid authentication.
+
+```tsx
+// src/routes.tsx
+import { Routes, Route, Navigate } from 'react-router-dom';
+import ProtectedRoute from './components/auth/ProtectedRoute';
+import RoleProtectedRoute from './components/auth/RoleProtectedRoute';
+
+// Pages
+import LoginPage from './pages/Login/LoginPage';
+import DashboardPage from './pages/Dashboard/DashboardPage';
+import SessionsPage from './pages/Sessions/SessionsPage';
+import SessionDetailPage from './pages/SessionDetail/SessionDetailPage';
+import VPNUsersPage from './pages/VPNUsers/VPNUsersPage';
+import VPNUserDetailPage from './pages/VPNUserDetail/VPNUserDetailPage';
+import AnalyticsPage from './pages/Analytics/AnalyticsPage';
+import PortalUsersPage from './pages/PortalUsers/PortalUsersPage';
+import PortalUserFormPage from './pages/PortalUserForm/PortalUserFormPage';
+import AuditLogsPage from './pages/AuditLogs/AuditLogsPage';
+import SettingsPage from './pages/Settings/SettingsPage';
+import ProfilePage from './pages/Profile/ProfilePage';
+import NotFoundPage from './pages/NotFound/NotFoundPage';
+
+const AppRoutes = () => {
+  return (
+    <Routes>
+      {/* Public Route - Login */}
+      <Route path="/" element={<LoginPage />} />
+      
+      {/* Protected Routes - All Authenticated Users */}
+      <Route element={<ProtectedRoute />}>
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/sessions" element={<SessionsPage />} />
+        <Route path="/sessions/:id" element={<SessionDetailPage />} />
+        <Route path="/vpn-users" element={<VPNUsersPage />} />
+        <Route path="/vpn-users/:id" element={<VPNUserDetailPage />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
+      </Route>
+      
+      {/* Protected Routes - Admin Only */}
+      <Route element={<RoleProtectedRoute allowedRoles={['admin']} />}>
+        <Route path="/portal-users" element={<PortalUsersPage />} />
+        <Route path="/portal-users/new" element={<PortalUserFormPage />} />
+        <Route path="/portal-users/:id" element={<PortalUserFormPage />} />
+      </Route>
+      
+      {/* Protected Routes - Admin & Auditor */}
+      <Route element={<RoleProtectedRoute allowedRoles={['admin', 'auditor']} />}>
+        <Route path="/audit-logs" element={<AuditLogsPage />} />
+      </Route>
+      
+      {/* 404 Not Found */}
+      <Route path="*" element={<NotFoundPage />} />
+    </Routes>
+  );
+};
+
+export default AppRoutes;
+```
+
+```tsx
+// src/components/auth/ProtectedRoute.tsx
+import React from 'react';
+import { Navigate, Outlet } from 'react-router-dom';
+import { useAppSelector } from '../../hooks/redux';
+import AppLayout from '../layout/AppLayout';
+
+const ProtectedRoute: React.FC = () => {
+  const { isAuthenticated } = useAppSelector(state => state.auth);
+  
+  if (!isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
+  
+  return (
+    <AppLayout>
+      <Outlet />
+    </AppLayout>
+  );
+};
+
+export default ProtectedRoute;
+```
+
+```tsx
+// src/components/auth/RoleProtectedRoute.tsx
+import React from 'react';
+import { Navigate, Outlet } from 'react-router-dom';
+import { useAppSelector } from '../../hooks/redux';
+import AppLayout from '../layout/AppLayout';
+import { Alert, Box } from '@mui/material';
+
+interface RoleProtectedRouteProps {
+  allowedRoles: string[];
+}
+
+const RoleProtectedRoute: React.FC<RoleProtectedRouteProps> = ({ allowedRoles }) => {
+  const { isAuthenticated, user } = useAppSelector(state => state.auth);
+  
+  if (!isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
+  
+  const userRoles = user?.roles || [];
+  const hasPermission = userRoles.some(role => allowedRoles.includes(role.name));
+  
+  if (!hasPermission) {
+    return (
+      <AppLayout>
+        <Box p={3}>
+          <Alert severity="error">
+            Access Denied: You do not have permission to view this page.
+          </Alert>
+        </Box>
+      </AppLayout>
+    );
+  }
+  
+  return (
+    <AppLayout>
+      <Outlet />
+    </AppLayout>
+  );
+};
+
+export default RoleProtectedRoute;
+```
+
+---
+
+### Navigation Structure
+
+```tsx
+// Sidebar navigation items (conditionally rendered based on roles)
+const navigationItems = [
+  {
+    title: 'Dashboard',
+    path: '/dashboard',
+    icon: <DashboardIcon />,
+    roles: ['admin', 'operator', 'viewer', 'auditor']
+  },
+  {
+    title: 'Sessions',
+    path: '/sessions',
+    icon: <ConnectionIcon />,
+    roles: ['admin', 'operator', 'viewer', 'auditor']
+  },
+  {
+    title: 'VPN Users',
+    path: '/vpn-users',
+    icon: <PeopleIcon />,
+    roles: ['admin', 'operator', 'viewer', 'auditor']
+  },
+  {
+    title: 'Analytics',
+    path: '/analytics',
+    icon: <AnalyticsIcon />,
+    roles: ['admin', 'operator', 'viewer', 'auditor']
+  },
+  {
+    title: 'Portal Users',
+    path: '/portal-users',
+    icon: <AdminPanelIcon />,
+    roles: ['admin']  // Admin only
+  },
+  {
+    title: 'Audit Logs',
+    path: '/audit-logs',
+    icon: <HistoryIcon />,
+    roles: ['admin', 'auditor']  // Admin and Auditor only
+  }
+];
+```
+
+---
+
+## Frontend Application Architecture
+
+### Project Structure (React)
+
+```
+vpn-telemetry-frontend/
+├── public/
+│   ├── index.html
+│   ├── favicon.ico
+│   └── manifest.json
+├── src/
+│   ├── index.tsx                   # Entry point
+│   ├── App.tsx                     # Root component
+│   ├── routes.tsx                  # Route definitions
+│   ├── components/
+│   │   ├── common/
+│   │   │   ├── LoadingSpinner.tsx
+│   │   │   ├── ErrorBoundary.tsx
+│   │   │   ├── PageHeader.tsx
+│   │   │   └── ConfirmDialog.tsx
+│   │   ├── layout/
+│   │   │   ├── AppLayout.tsx
+│   │   │   ├── Sidebar.tsx
+│   │   │   ├── Header.tsx
+│   │   │   └── Footer.tsx
+│   │   ├── auth/
+│   │   │   ├── LoginForm.tsx
+│   │   │   └── ProtectedRoute.tsx
+│   │   ├── dashboard/
+│   │   │   ├── DashboardOverview.tsx
+│   │   │   ├── ActiveSessionsCard.tsx
+│   │   │   ├── ServerStatusCard.tsx
+│   │   │   └── UsageCharts.tsx
+│   │   ├── sessions/
+│   │   │   ├── SessionsTable.tsx
+│   │   │   ├── SessionDetails.tsx
+│   │   │   └── SessionFilters.tsx
+│   │   ├── users/
+│   │   │   ├── UsersTable.tsx
+│   │   │   ├── UserForm.tsx
+│   │   │   ├── UserDetails.tsx
+│   │   │   └── UserCCDConfig.tsx
+│   │   ├── analytics/
+│   │   │   ├── UsageReports.tsx
+│   │   │   ├── TrendCharts.tsx
+│   │   │   └── ExportOptions.tsx
+│   │   └── audit/
+│   │       ├── AuditLogTable.tsx
+│   │       └── AuditLogFilters.tsx
+│   ├── features/
+│   │   ├── auth/
+│   │   │   └── authSlice.ts           # Redux slice for auth
+│   │   ├── sessions/
+│   │   │   └── sessionsSlice.ts       # Redux slice for sessions
+│   │   ├── users/
+│   │   │   └── usersSlice.ts          # Redux slice for users
+│   │   └── analytics/
+│   │       └── analyticsSlice.ts      # Redux slice for analytics
+│   ├── services/
+│   │   ├── api.ts                     # Axios instance
+│   │   ├── authService.ts             # Auth API calls
+│   │   ├── sessionService.ts          # Session API calls
+│   │   ├── userService.ts             # User API calls
+│   │   ├── analyticsService.ts        # Analytics API calls
+│   │   └── websocket.ts               # WebSocket service
+│   ├── hooks/
+│   │   ├── useAuth.ts                 # Auth hook
+│   │   ├── useWebSocket.ts            # WebSocket hook
+│   │   ├── useDebounce.ts             # Debounce hook
+│   │   └── usePagination.ts           # Pagination hook
+│   ├── utils/
+│   │   ├── formatters.ts              # Data formatting utils
+│   │   ├── validators.ts              # Form validators
+│   │   └── constants.ts               # App constants
+│   ├── types/
+│   │   ├── api.ts                     # API types
+│   │   ├── models.ts                  # Data models
+│   │   └── index.ts                   # Type exports
+│   ├── store/
+│   │   └── index.ts                   # Redux store config
+│   └── styles/
+│       ├── theme.ts                   # MUI theme
+│       └── global.css                 # Global styles
+├── .env.example
+├── .eslintrc.js
+├── .prettierrc
+├── tsconfig.json
+├── package.json
+└── vite.config.ts
+```
+
+### Key Frontend Components
+
+#### Dashboard Overview
+
+```typescript
+// src/components/dashboard/DashboardOverview.tsx
+import React, { useEffect } from 'react';
+import { Grid, Paper, Typography } from '@mui/material';
+import { useAppDispatch, useAppSelector } from '../../hooks/redux';
+import { fetchDashboardStats } from '../../features/analytics/analyticsSlice';
+import ActiveSessionsCard from './ActiveSessionsCard';
+import ServerStatusCard from './ServerStatusCard';
+import UsageCharts from './UsageCharts';
+import LoadingSpinner from '../common/LoadingSpinner';
+
+const DashboardOverview: React.FC = () => {
+  const dispatch = useAppDispatch();
+  const { stats, loading } = useAppSelector(state => state.analytics);
+  
+  useEffect(() => {
+    dispatch(fetchDashboardStats());
+    
+    // Refresh every 30 seconds
+    const interval = setInterval(() => {
+      dispatch(fetchDashboardStats());
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, [dispatch]);
+  
+  if (loading) return <LoadingSpinner />;
+  
+  return (
+    <Grid container spacing={3}>
+      <Grid item xs={12}>
+        <Typography variant="h4" gutterBottom>
+          VPN Telemetry Dashboard
+        </Typography>
+      </Grid>
+      
+      <Grid item xs={12} md={6} lg={3}>
+        <ActiveSessionsCard count={stats.activeSessions} />
+      </Grid>
+      
+      <Grid item xs={12} md={6} lg={3}>
+        <ServerStatusCard servers={stats.servers} />
+      </Grid>
+      
+      <Grid item xs={12} md={6} lg={3}>
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="h6">Total Users</Typography>
+          <Typography variant="h3">{stats.totalUsers}</Typography>
+        </Paper>
+      </Grid>
+      
+      <Grid item xs={12} md={6} lg={3}>
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="h6">Sessions Today</Typography>
+          <Typography variant="h3">{stats.sessionsToday}</Typography>
+        </Paper>
+      </Grid>
+      
+      <Grid item xs={12}>
+        <UsageCharts data={stats.usageData} />
+      </Grid>
+    </Grid>
+  );
+};
+
+export default DashboardOverview;
+```
+
+#### Real-Time Sessions Table
+
+```typescript
+// src/components/sessions/SessionsTable.tsx
+import React, { useEffect, useState } from 'react';
+import { AgGridReact } from 'ag-grid-react';
+import { ColDef } from 'ag-grid-community';
+import { Paper, Box, Typography } from '@mui/material';
+import { useWebSocket } from '../../hooks/useWebSocket';
+import { formatDuration, formatBytes, formatDateTime } from '../../utils/formatters';
+import 'ag-grid-community/styles/ag-grid.css';
+import 'ag-grid-community/styles/ag-theme-material.css';
+
+interface Session {
+  id: string;
+  common_name: string;
+  virtual_ip: string;
+  real_ip: string;
+  server_instance: string;
+  connected_at: string;
+  duration_seconds: number;
+  bytes_in: number;
+  bytes_out: number;
+}
+
+const SessionsTable: React.FC = () => {
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const { connected, on, emit } = useWebSocket();
+  
+  useEffect(() => {
+    // Listen for session updates
+    on('session_connected', (session: Session) => {
+      setSessions(prev => [session, ...prev]);
+    });
+    
+    on('session_disconnected', (session: Session) => {
+      setSessions(prev => prev.filter(s => s.id !== session.id));
+    });
+    
+    on('sessions_update', (updatedSessions: Session[]) => {
+      setSessions(updatedSessions);
+    });
+    
+    // Request initial data
+    emit('get_active_sessions');
+  }, [connected]);
+  
+  const columnDefs: ColDef[] = [
+    {
+      field: 'common_name',
+      headerName: 'User',
+      sortable: true,
+      filter: true,
+      width: 200
+    },
+    {
+      field: 'virtual_ip',
+      headerName: 'VPN IP',
+      sortable: true,
+      filter: true,
+      width: 120
+    },
+    {
+      field: 'real_ip',
+      headerName: 'Public IP',
+      sortable: true,
+      filter: true,
+      width: 140
+    },
+    {
+      field: 'server_instance',
+      headerName: 'Server',
+      sortable: true,
+      filter: true,
+      width: 150
+    },
+    {
+      field: 'connected_at',
+      headerName: 'Connected At',
+      sortable: true,
+      valueFormatter: params => formatDateTime(params.value),
+      width: 180
+    },
+    {
+      field: 'duration_seconds',
+      headerName: 'Duration',
+      sortable: true,
+      valueFormatter: params => formatDuration(params.value),
+      width: 120
+    },
+    {
+      field: 'bytes_in',
+      headerName: 'Downloaded',
+      sortable: true,
+      valueFormatter: params => formatBytes(params.value),
+      width: 120
+    },
+    {
+      field: 'bytes_out',
+      headerName: 'Uploaded',
+      sortable: true,
+      valueFormatter: params => formatBytes(params.value),
+      width: 120
+    }
+  ];
+  
+  return (
+    <Paper sx={{ p: 2 }}>
+      <Box display="flex" justifyContent="space-between" mb={2}>
+        <Typography variant="h6">
+          Active Sessions ({sessions.length})
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {connected ? '🟢 Live' : '🔴 Disconnected'}
+        </Typography>
+      </Box>
+      
+      <div className="ag-theme-material" style={{ height: 600, width: '100%' }}>
+        <AgGridReact
+          rowData={sessions}
+          columnDefs={columnDefs}
+          defaultColDef={{
+            resizable: true,
+            sortable: true
+          }}
+          pagination={true}
+          paginationPageSize={20}
+          animateRows={true}
+        />
+      </div>
+    </Paper>
+  );
+};
+
+export default SessionsTable;
+```
+
+---
+
+## Authentication & Authorization
+
+### Role-Based Access Control (RBAC)
+
+```python
+# app/utils/decorators.py
+from functools import wraps
+from flask import jsonify
+from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
+from app.models import PortalUser, PortalRole
+from app.extensions import db
+
+def role_required(*allowed_roles):
+    """Decorator to check if user has required role"""
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            verify_jwt_in_request()
+            username = get_jwt_identity()
+            
+            user = PortalUser.query.filter_by(username=username).first()
+            if not user or not user.is_active:
+                return jsonify(error='Unauthorized'), 401
+            
+            user_roles = [r.name for r in user.roles]
+            
+            # Admin has all permissions
+            if 'admin' in user_roles:
+                return fn(*args, **kwargs)
+            
+            # Check if user has any of the allowed roles
+            if not any(role in user_roles for role in allowed_roles):
+                return jsonify(error='Insufficient permissions'), 403
+            
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
+
+def audit_action(action, object_type):
+    """Decorator to log auditable actions"""
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            from flask import request
+            from app.models import AuditLog
+            
+            # Execute the function
+            result = fn(*args, **kwargs)
+            
+            # Log the action
+            try:
+                username = get_jwt_identity()
+                user = PortalUser.query.filter_by(username=username).first()
+                
+                log = AuditLog(
+                    actor_portal_user_id=user.id if user else None,
+                    action=action,
+                    object_type=object_type,
+                    object_id=str(kwargs.get('id', '')),
+                    details_json=request.get_json(),
+                    ip_address=request.remote_addr
+                )
+                db.session.add(log)
+                db.session.commit()
+            except Exception as e:
+                # Don't fail the request if audit logging fails
+                pass
+            
+            return result
+        return wrapper
+    return decorator
+```
+
+### Protected API Endpoint Example
+
+```python
+# app/api/vpn_users.py - VPN Users (Read-Only)
+from flask import Blueprint, jsonify, request
+from flask_jwt_extended import jwt_required
+from app.services.vpn_user_service import VPNUserService
+from app.utils.decorators import role_required
+
+bp = Blueprint('vpn_users', __name__)
+
+@bp.route('/', methods=['GET'])
+@jwt_required()
+@role_required('admin', 'operator', 'viewer', 'auditor')
+def list_vpn_users():
+    """List all VPN users (read-only)"""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    search = request.args.get('search', '')
+    vpn_status = request.args.get('vpn_status', '')
+    user_type = request.args.get('user_type', '')
+    
+    result = VPNUserService.list_users(page, per_page, search, vpn_status, user_type)
+    return jsonify(result), 200
+
+@bp.route('/<int:id>', methods=['GET'])
+@jwt_required()
+@role_required('admin', 'operator', 'viewer', 'auditor')
+def get_vpn_user(id):
+    """Get VPN user details (read-only)"""
+    try:
+        user = VPNUserService.get_user(id)
+        return jsonify(user.to_dict()), 200
+    except ValueError as e:
+        return jsonify(error=str(e)), 404
+
+@bp.route('/<int:id>/sessions', methods=['GET'])
+@jwt_required()
+@role_required('admin', 'operator', 'viewer', 'auditor')
+def get_vpn_user_sessions(id):
+    """Get sessions for VPN user (read-only)"""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    
+    try:
+        result = VPNUserService.get_user_sessions(id, page, per_page)
+        return jsonify(result), 200
+    except ValueError as e:
+        return jsonify(error=str(e)), 404
+```
+
+```python
+# app/api/portal_users.py - Portal Users Management (Admin Only)
+from flask import Blueprint, jsonify, request
+from flask_jwt_extended import jwt_required
+from app.services.portal_user_service import PortalUserService
+from app.utils.decorators import role_required, audit_action
+
+bp = Blueprint('portal_users', __name__)
+
+@bp.route('/', methods=['GET'])
+@jwt_required()
+@role_required('admin')
+def list_portal_users():
+    """List all portal users (admin only)"""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    
+    result = PortalUserService.list_users(page, per_page)
+    return jsonify(result), 200
+
+@bp.route('/', methods=['POST'])
+@jwt_required()
+@role_required('admin')
+@audit_action('create', 'portal_user')
+def create_portal_user():
+    """Create new portal user (admin only)"""
+    data = request.get_json()
+    
+    try:
+        user = PortalUserService.create_user(data)
+        return jsonify(user.to_dict()), 201
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+
+@bp.route('/<int:id>', methods=['GET'])
+@jwt_required()
+@role_required('admin')
+def get_portal_user(id):
+    """Get portal user details (admin only)"""
+    try:
+        user = PortalUserService.get_user(id)
+        return jsonify(user.to_dict()), 200
+    except ValueError as e:
+        return jsonify(error=str(e)), 404
+
+@bp.route('/<int:id>', methods=['PUT'])
+@jwt_required()
+@role_required('admin')
+@audit_action('update', 'portal_user')
+def update_portal_user(id):
+    """Update portal user (admin only)"""
+    data = request.get_json()
+    
+    try:
+        user = PortalUserService.update_user(id, data)
+        return jsonify(user.to_dict()), 200
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+
+@bp.route('/<int:id>', methods=['DELETE'])
+@jwt_required()
+@role_required('admin')
+@audit_action('delete', 'portal_user')
+def delete_portal_user(id):
+    """Delete portal user (admin only)"""
+    try:
+        PortalUserService.delete_user(id)
+        return '', 204
+    except ValueError as e:
+        return jsonify(error=str(e)), 404
+
+@bp.route('/<int:id>/reset-password', methods=['POST'])
+@jwt_required()
+@role_required('admin')
+@audit_action('reset_password', 'portal_user')
+def reset_portal_user_password(id):
+    """Reset portal user password (admin only)"""
+    data = request.get_json()
+    new_password = data.get('new_password')
+    
+    if not new_password:
+        return jsonify(error='new_password is required'), 400
+    
+    try:
+        PortalUserService.reset_password(id, new_password)
+        return jsonify(message='Password reset successfully'), 200
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+```
+
+---
+
+## Core Features & User Flows
+
+### 1. Dashboard - Real-Time Monitoring
+
+**Features:**
+- Live active sessions count
+- Server health status indicators
+- Bandwidth usage charts (real-time)
+- Recent connection/disconnection events
+- Geographic distribution map (optional)
+- Top users by bandwidth
+
+**User Flow:**
+1. User logs into portal
+2. Dashboard loads with latest stats
+3. WebSocket connection established
+4. Real-time updates stream in
+5. Charts update automatically
+6. Click on card to drill down into details
+
+### 2. Session Browser
+
+**Features:**
+- Searchable/filterable sessions table
+- Export to CSV/Excel
+- Session detail view (click row)
+- Terminate active session (admin only)
+- Historical session playback
+
+**User Flow:**
+1. Navigate to Sessions page
+2. Apply filters (date range, user, server)
+3. View results in data grid
+4. Click row to see full session details
+5. Export filtered results if needed
+
+### 3. VPN User Monitoring (Read-Only)
+
+**Important:** VPN users are NOT created through this portal. They are created externally via OpenVPN certificate generation. This portal provides read-only access to view and monitor VPN users.
+
+**Features:**
+- Search and filter VPN users
+- View user details and activity
+- Monitor certificate expiration
+- View user sessions history
+- View CCD configuration (read-only)
+- View custom routes (read-only)
+- Export user lists
+
+**User Flow:**
+1. Navigate to VPN Users page
+2. Search/filter users by name, email, status, type
+3. Click row to see full user details
+4. View certificate info and expiration warnings
+5. View recent sessions for the user
+6. View static IP and route configurations (if configured)
+7. Export filtered user list if needed
+
+**What You CANNOT Do:**
+- Create new VPN users
+- Edit VPN user information
+- Delete VPN users
+- Revoke certificates
+- Modify CCD configuration
+- Modify custom routes
+
+### 4. Portal User Management (Admin Only)
+
+**Features:**
+- Create/edit/delete portal users
+- Assign roles (admin, operator, viewer, auditor)
+- Activate/deactivate accounts
+- Reset passwords
+- View login history
+
+**User Flow:**
+1. Navigate to Portal Users page (admin only)
+2. Click "Add Portal User" button
+3. Fill form (username, email, password, roles)
+4. Submit - portal user created
+5. User receives credentials and can log in
+
+### 5. Analytics & Reporting
+
+**Features:**
+- Usage trends over time
+- Per-user bandwidth reports
+- Server utilization reports
+- Compliance reports (audit trail)
+- Scheduled report delivery (email)
+- Custom date range selection
+
+**User Flow:**
+1. Navigate to Analytics page
+2. Select report type
+3. Choose date range and filters
+4. Generate report
+5. View interactive charts
+6. Export as PDF or Excel
+
+### 6. Audit Logs (Admin & Auditor)
+
+**Features:**
+- Complete admin action history
+- Filterable by user, action, date
+- Immutable log entries
+- Compliance export
+
+**User Flow:**
+1. Navigate to Audit page
+2. Apply filters
+3. View chronological log
+4. Export for compliance
+
+---
+
+## Real-Time Dashboard
+
+### WebSocket Implementation
+
+#### Backend (Flask-SocketIO)
+
+```python
+# app/websocket/events.py
+from flask_socketio import emit, join_room, leave_room
+from flask_jwt_extended import decode_token
+from app.extensions import socketio
+from app.models import VPNSession
+import logging
+
+logger = logging.getLogger(__name__)
+
+@socketio.on('connect')
+def handle_connect(auth):
+    """Handle WebSocket connection"""
+    try:
+        # Verify JWT token
+        token = auth.get('token')
+        if not token:
+            return False
+        
+        decode_token(token)
+        logger.info("WebSocket client connected")
+        
+        # Send current active sessions
+        send_active_sessions()
+        
+        return True
+    except Exception as e:
+        logger.error(f"WebSocket auth failed: {e}")
+        return False
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle WebSocket disconnection"""
+    logger.info("WebSocket client disconnected")
+
+@socketio.on('join_server_room')
+def handle_join_server_room(data):
+    """Join room for specific server updates"""
+    server_id = data.get('server_id')
+    if server_id:
+        join_room(f'server_{server_id}')
+        logger.info(f"Client joined room: server_{server_id}")
+
+@socketio.on('leave_server_room')
+def handle_leave_server_room(data):
+    """Leave server room"""
+    server_id = data.get('server_id')
+    if server_id:
+        leave_room(f'server_{server_id}')
+
+@socketio.on('get_active_sessions')
+def handle_get_active_sessions():
+    """Send current active sessions to client"""
+    send_active_sessions()
+
+def send_active_sessions():
+    """Broadcast active sessions"""
+    sessions = VPNSession.query.filter_by(session_status='active').all()
+    emit('sessions_update', [s.to_dict() for s in sessions])
+
+def emit_session_connected(session_data):
+    """Broadcast new session connection"""
+    socketio.emit('session_connected', session_data, namespace='/')
+    
+    # Also emit to server-specific room
+    server_id = session_data.get('server_instance')
+    if server_id:
+        socketio.emit('session_connected', session_data, room=f'server_{server_id}')
+
+def emit_session_disconnected(session_data):
+    """Broadcast session disconnection"""
+    socketio.emit('session_disconnected', session_data, namespace='/')
+    
+    server_id = session_data.get('server_instance')
+    if server_id:
+        socketio.emit('session_disconnected', session_data, room=f'server_{server_id}')
+```
+
+#### Frontend (WebSocket Hook)
+
+```typescript
+// src/hooks/useWebSocket.ts
+import { useEffect, useRef, useState } from 'react';
+import io, { Socket } from 'socket.io-client';
+import { useAppSelector } from './redux';
+
+const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+export const useWebSocket = () => {
+  const socketRef = useRef<Socket | null>(null);
+  const [connected, setConnected] = useState(false);
+  const { token } = useAppSelector(state => state.auth);
+  
+  useEffect(() => {
+    if (!token) return;
+    
+    // Create socket connection
+    socketRef.current = io(SOCKET_URL, {
+      auth: { token },
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 5
+    });
+    
+    socketRef.current.on('connect', () => {
+      console.log('WebSocket connected');
+      setConnected(true);
+    });
+    
+    socketRef.current.on('disconnect', () => {
+      console.log('WebSocket disconnected');
+      setConnected(false);
+    });
+    
+    socketRef.current.on('connect_error', (error) => {
+      console.error('WebSocket connection error:', error);
+    });
+    
+    return () => {
+      socketRef.current?.disconnect();
+    };
+  }, [token]);
+  
+  const on = (event: string, callback: (data: any) => void) => {
+    socketRef.current?.on(event, callback);
+  };
+  
+  const emit = (event: string, data?: any) => {
+    socketRef.current?.emit(event, data);
+  };
+  
+  const joinRoom = (serverName: string) => {
+    emit('join_server_room', { server_id: serverName });
+  };
+  
+  const leaveRoom = (serverName: string) => {
+    emit('leave_server_room', { server_id: serverName });
+  };
+  
+  return {
+    connected,
+    on,
+    emit,
+    joinRoom,
+    leaveRoom
+  };
+};
+```
+
+---
+
+## Deployment Architecture
+
+### Docker Compose Setup
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:14-alpine
+    container_name: vpn-telemetry-db
+    environment:
+      POSTGRES_DB: vpn_telemetry
+      POSTGRES_USER: vpn_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - vpn-telemetry-net
+    restart: unless-stopped
+  
+  # Redis Cache & Message Broker
+  redis:
+    image: redis:7-alpine
+    container_name: vpn-telemetry-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - vpn-telemetry-net
+    restart: unless-stopped
+  
+  # Flask Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vpn-telemetry-backend
+    environment:
+      DATABASE_URL: postgresql://vpn_user:${DB_PASSWORD}@postgres:5432/vpn_telemetry
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      FLASK_ENV: production
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "5000:5000"
+    networks:
+      - vpn-telemetry-net
+    restart: unless-stopped
+    command: gunicorn -w 4 -b 0.0.0.0:5000 --worker-class eventlet app:app
+  
+  # Celery Worker
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vpn-telemetry-celery
+    environment:
+      DATABASE_URL: postgresql://vpn_user:${DB_PASSWORD}@postgres:5432/vpn_telemetry
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY}
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - vpn-telemetry-net
+    restart: unless-stopped
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+  
+  # Celery Beat (Scheduler)
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vpn-telemetry-beat
+    environment:
+      DATABASE_URL: postgresql://vpn_user:${DB_PASSWORD}@postgres:5432/vpn_telemetry
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY}
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - vpn-telemetry-net
+    restart: unless-stopped
+    command: celery -A app.tasks.celery_app beat --loglevel=info
+  
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: vpn-telemetry-frontend
+    ports:
+      - "3000:80"
+    networks:
+      - vpn-telemetry-net
+    restart: unless-stopped
+  
+  # NGINX Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: vpn-telemetry-nginx
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - vpn-telemetry-net
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  vpn-telemetry-net:
+    driver: bridge
+```
+
+### NGINX Configuration
+
+```nginx
+# nginx/nginx.conf
+upstream backend {
+    server backend:5000;
+}
+
+upstream frontend {
+    server frontend:80;
+}
+
+server {
+    listen 80;
+    server_name telemetry.yourdomain.com;
+    
+    # Redirect HTTP to HTTPS
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name telemetry.yourdomain.com;
+    
+    # SSL Configuration
+    ssl_certificate /etc/nginx/ssl/cert.pem;
+    ssl_certificate_key /etc/nginx/ssl/key.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    
+    # Security Headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    
+    # API Routes
+    location /api/ {
+        proxy_pass http://backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+    
+    # WebSocket Route
+    location /socket.io/ {
+        proxy_pass http://backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # WebSocket timeouts
+        proxy_connect_timeout 7d;
+        proxy_send_timeout 7d;
+        proxy_read_timeout 7d;
+    }
+    
+    # Frontend Routes
+    location / {
+        proxy_pass http://frontend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    
+    # Static Assets Caching
+    location ~* \.(jpg|jpeg|png|gif|ico|css|js|woff|woff2|ttf|svg)$ {
+        proxy_pass http://frontend;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
+```
+
+---
+
+## Security Considerations
+
+### 1. Authentication Security
+
+- **Password Hashing**: Use Argon2 or bcrypt (cost factor 12+)
+- **JWT Configuration**:
+  - Short access token lifetime (1 hour)
+  - Refresh tokens stored in httpOnly cookies
+  - Token rotation on refresh
+- **Multi-Factor Authentication** (optional but recommended)
+- **Account Lockout**: 5 failed attempts = 15 min lockout
+- **Session Management**: Redis-backed sessions with TTL
+
+### 2. Authorization
+
+- **Role-Based Access Control (RBAC)**
+- **Principle of Least Privilege**
+- **API Endpoint Protection**: All endpoints require valid JWT
+- **Audit Logging**: All privileged actions logged
+
+### 3. Data Protection
+
+- **Encryption at Rest**: PostgreSQL transparent data encryption (TDE)
+- **Encryption in Transit**: TLS 1.2+ only
+- **Sensitive Data Masking**: Passwords never logged
+- **SQL Injection Prevention**: ORM parameterized queries
+- **XSS Prevention**: Content Security Policy headers
+
+### 4. Network Security
+
+- **Firewall Rules**:
+  - Allow: 443 (HTTPS), 5432 (PostgreSQL from backend only)
+  - Deny: All other inbound
+- **Rate Limiting**: 100 requests/minute per IP
+- **DDoS Protection**: Cloudflare or AWS Shield
+
+### 5. Container Security
+
+- **Non-root Users**: All containers run as non-root
+- **Image Scanning**: Trivy/Clair for vulnerability scanning
+- **Secret Management**: Docker secrets or HashiCorp Vault
+- **Network Isolation**: Bridge network, no direct internet access
+
+---
+
+## Monitoring & Observability
+
+### Metrics to Track
+
+#### Application Metrics
+- Request rate (requests/sec)
+- Request latency (p50, p95, p99)
+- Error rate (4xx, 5xx)
+- Active WebSocket connections
+- API endpoint response times
+
+#### Business Metrics
+- Active VPN sessions
+- Sessions created/hour
+- Top users by bandwidth
+- Certificate expiration alerts
+- Session cleanup job success rate
+
+#### Infrastructure Metrics
+- CPU usage (per container)
+- Memory usage
+- Disk I/O
+- Network throughput
+- PostgreSQL connections
+- Redis memory usage
+
+### Logging Strategy
+
+```python
+# Structured logging example
+import structlog
+
+logger = structlog.get_logger()
+
+logger.info(
+    "session_connected",
+    session_id=session.id,
+    user=session.common_name,
+    server=session.server_instance,
+    virtual_ip=session.virtual_ip,
+    real_ip=session.real_ip
+)
+```
+
+### Alerting Rules
+
+| Metric | Threshold | Action |
+|--------|-----------|--------|
+| Error rate | > 5% | Page on-call |
+| API latency p95 | > 2s | Investigate |
+| Database connections | > 80% | Scale up |
+| Orphaned sessions | > 100 | Check cleanup job |
+| Certificate expiring | < 30 days | Email admin |
+| Disk usage | > 85% | Expand storage |
+
+---
+
+## API Reference
+
+### Authentication Endpoints
+
+#### POST /api/auth/login
+Login and receive JWT token
+
+**Request:**
+```json
+{
+  "username": "admin",
+  "password": "password"
+}
+```
+
+**Response:**
+```json
+{
+  "access_token": "eyJ...",
+  "refresh_token": "eyJ...",
+  "token_type": "Bearer",
+  "expires_in": 3600
+}
+```
+
+#### POST /api/auth/refresh
+Refresh access token
+
+**Request:**
+```json
+{
+  "refresh_token": "eyJ..."
+}
+```
+
+### Telemetry Endpoints
+
+#### POST /api/v1/events
+Receive telemetry events from OpenVPN agents
+
+**Headers:**
+```
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**Request:**
+```json
+{
+  "server_id": "vpn-prod-01",
+  "sent_at": "2026-02-09T14:30:45Z",
+  "events": [...]
+}
+```
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "events_received": 10,
+  "sessions_created": 5,
+  "sessions_updated": 5
+}
+```
+
+### User Management Endpoints
+
+#### GET /api/vpn-users
+List VPN users (read-only)
+
+**Query Parameters:**
+- `page` (int): Page number (default: 1)
+- `per_page` (int): Items per page (default: 50)
+- `search` (string): Search term (searches common_name and email)
+- `vpn_status` (string): Filter by vpn_status (active/inactive)
+- `user_type` (string): Filter by user_type (internal/external/contractor/guest)
+- `business_status` (string): Filter by business_status (active/suspended/terminated)
+
+**Response:**
+```json
+{
+  "users": [...],
+  "total": 150,
+  "page": 1,
+  "per_page": 50,
+  "pages": 3
+}
+```
+
+#### GET /api/vpn-users/:id
+Get VPN user details (read-only)
+
+**Response:**
+```json
+{
+  "id": 1,
+  "common_name": "john.doe@example.com",
+  "email": "john.doe@example.com",
+  "vpn_status": "active",
+  "user_type": "internal",
+  "business_status": "active",
+  "last_vpn_seen_at": "2026-02-09T10:30:00Z",
+  "cert_expiry_at": "2027-02-09T00:00:00Z",
+  "active_sessions": 2,
+  "total_sessions": 145,
+  "ccd": {
+    "ifconfig_ip": "10.8.100.10",
+    "ifconfig_netmask": "255.255.255.0"
+  },
+  "routes": [
+    {
+      "route_type": "push",
+      "network": "192.168.1.0",
+      "netmask": "255.255.255.0"
+    }
+  ]
+}
+```
+
+#### GET /api/vpn-users/:id/sessions
+Get sessions for specific VPN user
+
+**Query Parameters:**
+- `page`, `per_page`
+- `status`: Filter by session status
+- `from_date`, `to_date`: Date range
+
+### Portal User Management Endpoints (Admin Only)
+
+#### GET /api/portal-users
+List portal users
+
+**Response:**
+```json
+{
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "email": "admin@example.com",
+      "is_active": true,
+      "roles": [
+        {"id": 1, "name": "admin"}
+      ],
+      "last_portal_login_at": "2026-02-09T08:00:00Z",
+      "created_at": "2026-01-01T00:00:00Z"
+    }
+  ],
+  "total": 5,
+  "page": 1,
+  "per_page": 50
+}
+```
+
+#### POST /api/portal-users
+Create new portal user (admin only)
+
+**Request:**
+```json
+{
+  "username": "operator1",
+  "email": "operator1@example.com",
+  "password": "SecurePass123!",
+  "role_ids": [2],
+  "is_active": true
+}
+```
+
+**Response:**
+```json
+{
+  "id": 6,
+  "username": "operator1",
+  "email": "operator1@example.com",
+  "is_active": true,
+  "roles": [
+    {"id": 2, "name": "operator"}
+  ],
+  "created_at": "2026-02-09T14:00:00Z"
+}
+```
+
+#### GET /api/portal-users/:id
+Get portal user details (admin only)
+
+#### PUT /api/portal-users/:id
+Update portal user (admin only)
+
+**Request:**
+```json
+{
+  "email": "newemail@example.com",
+  "role_ids": [2, 3],
+  "is_active": true
+}
+```
+
+#### DELETE /api/portal-users/:id
+Delete portal user (admin only)
+
+**Response:** `204 No Content`
+
+#### POST /api/portal-users/:id/reset-password
+Reset portal user password (admin only)
+
+**Request:**
+```json
+{
+  "new_password": "NewSecurePass123!"
+}
+```
+
+### Session Endpoints
+
+#### GET /api/sessions
+List sessions
+
+**Query Parameters:**
+- `page`, `per_page`
+- `status`: active|disconnected|timeout
+- `server_instance`: Filter by server
+- `user_id`: Filter by user
+- `from_date`, `to_date`: Date range
+
+#### GET /api/sessions/:id
+Get session details
+
+#### DELETE /api/sessions/:id
+Terminate active session (admin only)
+
+### Analytics Endpoints
+
+#### GET /api/analytics/dashboard
+Get dashboard statistics
+
+**Response:**
+```json
+{
+  "active_sessions": 342,
+  "total_users": 1250,
+  "sessions_today": 875,
+  "servers": [
+    {
+      "name": "vpn-prod-01",
+      "active_sessions": 120,
+      "status": "healthy"
+    }
+  ],
+  "usage_data": {...}
+}
+```
+
+#### GET /api/analytics/usage
+Get usage statistics
+
+**Query Parameters:**
+- `period`: day|week|month|year
+- `group_by`: server|user_type
+
+#### GET /api/analytics/reports
+Generate reports
+
+**Query Parameters:**
+- `report_type`: usage|compliance|bandwidth
+- `from_date`, `to_date`
+- `format`: json|csv|pdf
+
+---
+
+
+
+## Conclusion
+
+This architecture provides a complete, production-ready solution for managing the OpenVPN Telemetry System. The web application offers:
+
+✅ **Real-time visibility** with WebSocket-powered dashboard  
+✅ **Scalable architecture** supporting thousands of sessions  
+✅ **Secure authentication** with JWT and RBAC  
+✅ **Comprehensive monitoring** of VPN users and sessions (read-only for VPN users)  
+✅ **Portal user management** with role-based access control  
+✅ **Analytics & reporting** with historical data and exports  
+✅ **Audit compliance** with complete action logging  
+✅ **Protected routes** - all pages require authentication  
+✅ **Professional UI** with React and Material-UI  
+
+**Key Architectural Decisions:**
+
+1. **VPN Users are Read-Only** - VPN users are created externally via OpenVPN certificate generation. The portal provides monitoring and visibility only.
+
+2. **Portal Users are Managed** - Admin users can create, edit, and delete portal users (admin/operator/viewer/auditor roles) who access the portal.
+
+3. **All Routes Protected** - Every page except login requires valid authentication. Role-based routes restrict access to admin-only features.
+
+4. **Separation of Concerns** - Clear distinction between VPN infrastructure users (monitored) and portal administrative users (managed).
+
+The modular design allows for easy customization and extension while maintaining security, performance, and reliability standards expected in production environments.
+
+---
+
+**Document Version:** 1.0.1  
+**Last Updated:** February 9, 2026  
+**Author:** VPN Telemetry Team  
+**Contact:** support@yourdomain.com
