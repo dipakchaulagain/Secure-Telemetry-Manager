@@ -1,11 +1,10 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
 
 // === TABLE DEFINITIONS ===
 
-// 1. Portal Users (Admins/Operators) - Access the web UI
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
@@ -17,25 +16,23 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// 2. VPN Users - The actual VPN clients
 export const vpnUsers = pgTable("vpn_users", {
   id: serial("id").primaryKey(),
-  commonName: text("common_name").notNull().unique(), // VPN certificate CN (Username)
+  commonName: text("common_name").notNull().unique(),
   email: text("email"),
   fullName: text("full_name"),
   contact: text("contact"),
   type: text("type", { enum: ["Employee", "Vendor", "Dealer", "Others"] }).notNull().default("Others"),
-  status: text("status").notNull().default("offline"), // online, offline
+  status: text("status").notNull().default("offline"),
   totalBytesReceived: integer("total_bytes_received").default(0),
   totalBytesSent: integer("total_bytes_sent").default(0),
   lastConnected: timestamp("last_connected"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// 3. Sessions - Historical and Active VPN sessions
 export const sessions = pgTable("sessions", {
   id: serial("id").primaryKey(),
-  vpnUserId: integer("vpn_user_id").notNull(), // FK to vpnUsers
+  vpnUserId: integer("vpn_user_id").notNull(),
   startTime: timestamp("start_time").notNull().defaultNow(),
   endTime: timestamp("end_time"),
   bytesReceived: integer("bytes_received").notNull().default(0),
@@ -45,12 +42,11 @@ export const sessions = pgTable("sessions", {
   status: text("status", { enum: ["active", "closed"] }).notNull().default("active"),
 });
 
-// 4. Audit Logs - Tracking admin actions
 export const auditLogs = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id"), // FK to users (Portal User)
+  userId: integer("user_id"),
   action: text("action").notNull(),
-  entityType: text("entity_type").notNull(), // e.g., "user", "configuration"
+  entityType: text("entity_type").notNull(),
   entityId: text("entity_id"),
   details: text("details"),
   timestamp: timestamp("timestamp").defaultNow(),
@@ -93,11 +89,5 @@ export type Session = typeof sessions.$inferSelect;
 export type InsertSession = z.infer<typeof insertSessionSchema>;
 export type AuditLog = typeof auditLogs.$inferSelect;
 
-// Request Types
-export type LoginRequest = { username: string; password: string };
-export type CreateUserRequest = InsertUser;
-export type UpdateUserRequest = Partial<InsertUser>;
-
-// Response Types
 export type UserResponse = Omit<User, "password">;
 export type SessionWithUser = Session & { vpnUser: VpnUser };

@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { createServer, type Server } from "http";
+import { type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
@@ -9,10 +9,8 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Set up authentication first
   setupAuth(app);
 
-  // === Portal User Management ===
   app.get(api.users.list.path, async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const users = await storage.getUsers();
@@ -29,7 +27,7 @@ export async function registerRoutes(
         action: "CREATE",
         entityType: "user",
         entityId: String(user.id),
-        details: `Created user ${user.username} with role ${user.role}`
+        details: `Created user ${user.username}`
       });
       res.status(201).json(user);
     } catch (err) {
@@ -53,7 +51,6 @@ export async function registerRoutes(
     res.json(user);
   });
 
-  // === VPN Users ===
   app.get(api.vpnUsers.list.path, async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const vpnUsers = await storage.getVpnUsers();
@@ -70,19 +67,17 @@ export async function registerRoutes(
   app.patch("/api/vpn-users/:id", async (req, res) => {
     if (!req.isAuthenticated() || req.user?.role === 'viewer') return res.sendStatus(403);
     const id = parseInt(req.params.id);
-    const updates = req.body; // In a real app, validate with zod
-    const user = await storage.updateVpnUser(id, updates);
+    const user = await storage.updateVpnUser(id, req.body);
     await storage.createAuditLog({
       userId: req.user.id,
       action: "UPDATE_VPN_USER",
       entityType: "vpn_user",
-      entityId: String(user.id),
-      details: `Updated VPN user ${user.commonName}`
+      entityId: String(id),
+      details: `Updated VPN user info for ${user.commonName}`
     });
     res.json(user);
   });
 
-  // === Sessions ===
   app.get(api.sessions.active.path, async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const sessions = await storage.getActiveSessions();
@@ -105,41 +100,35 @@ export async function registerRoutes(
     if (!req.isAuthenticated() || req.user?.role === 'viewer') return res.sendStatus(403);
     const id = parseInt(req.params.id);
     await storage.endSession(id);
-    
     await storage.createAuditLog({
       userId: req.user.id,
       action: "KILL_SESSION",
       entityType: "session",
       entityId: String(id),
-      details: "Forcibly terminated active VPN session"
+      details: "Terminated active VPN session"
     });
-    
     res.json({ message: "Session terminated" });
   });
 
-  // === Stats ===
   app.get(api.stats.get.path, async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const active = await storage.getActiveSessions();
     const vpnUsers = await storage.getVpnUsers();
     const totalBytes = active.reduce((acc, s) => acc + (s.bytesReceived || 0) + (s.bytesSent || 0), 0);
-    
     res.json({
       activeSessions: active.length,
       totalVpnUsers: vpnUsers.length,
       bytesTransferred: totalBytes,
-      serverStatus: "Online (vpn-prod-01)"
+      serverStatus: "Online"
     });
   });
 
-  // === Audit Logs ===
   app.get(api.audit.list.path, async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const logs = await storage.getAuditLogs();
     res.json(logs);
   });
 
-  // Seed data check
   await seedDatabase();
 
   return httpServer;
@@ -148,41 +137,19 @@ export async function registerRoutes(
 async function seedDatabase() {
   const existingUsers = await storage.getUsers();
   if (existingUsers.length === 0) {
-    // Create Default Admin
-    // In a real app, hash this password! The auth implementation will handle that.
     await storage.createUser({
       username: "admin",
-      password: "password123", // Basic seed password
+      password: "password123",
       role: "admin",
       isActive: true,
       email: "admin@example.com",
-      fullName: "System Administrator"
+      fullName: "System Admin"
     });
     
-    // Create some VPN users
-    const vpnUser1 = await storage.createVpnUser({ commonName: "jdoe@company.com", status: "online", type: "Employee", fullName: "John Doe", email: "jdoe@company.com" });
-    const vpnUser2 = await storage.createVpnUser({ commonName: "alice.smith@remote.org", status: "online", type: "Vendor", fullName: "Alice Smith", email: "alice@remote.org" });
-    const vpnUser3 = await storage.createVpnUser({ commonName: "backup-service-01", status: "offline", type: "Others" });
-    
-    // Create active sessions
-    await storage.createSession({
-      vpnUserId: vpnUser1.id,
-      remoteIp: "203.0.113.45",
-      virtualIp: "10.8.0.5",
-      bytesReceived: 1048576,
-      bytesSent: 524288,
-      status: "active"
-    });
-    
-    await storage.createSession({
-      vpnUserId: vpnUser2.id,
-      remoteIp: "198.51.100.22",
-      virtualIp: "10.8.0.6",
-      bytesReceived: 256000,
-      bytesSent: 128000,
-      status: "active"
-    });
+    const v1 = await storage.createVpnUser({ commonName: "jdoe@company.com", type: "Employee", fullName: "John Doe", email: "jdoe@company.com" });
+    const v2 = await storage.createVpnUser({ commonName: "vendor-x", type: "Vendor", fullName: "External Vendor" });
 
-    console.log("Database seeded with initial data");
+    await storage.createSession({ vpnUserId: v1.id, remoteIp: "1.1.1.1", virtualIp: "10.8.0.2", status: "active" });
+    await storage.createSession({ vpnUserId: v2.id, remoteIp: "2.2.2.2", virtualIp: "10.8.0.3", status: "closed", endTime: new Date() });
   }
 }

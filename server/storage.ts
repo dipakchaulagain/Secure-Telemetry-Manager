@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db, pool } from "./db";
 import {
   users, vpnUsers, sessions, auditLogs,
   type User, type InsertUser,
@@ -6,36 +6,28 @@ import {
   type Session, type InsertSession,
   type AuditLog
 } from "@shared/schema";
-import { eq, desc, and, isNull } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
-import { pool } from "./db";
 
 const PostgresSessionStore = connectPg(session);
 
 export interface IStorage {
   sessionStore: session.Store;
-  // User Management
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   getUsers(): Promise<User[]>;
   updateUser(id: number, user: Partial<InsertUser>): Promise<User>;
-
-  // VPN User Management
   getVpnUsers(): Promise<VpnUser[]>;
   getVpnUser(id: number): Promise<VpnUser | undefined>;
   createVpnUser(user: InsertVpnUser): Promise<VpnUser>;
   updateVpnUser(id: number, user: Partial<InsertVpnUser>): Promise<VpnUser>;
-
-  // Session Management
   getActiveSessions(): Promise<(Session & { vpnUser: VpnUser })[]>;
   getSessionHistory(): Promise<(Session & { vpnUser: VpnUser })[]>;
   getAllSessions(): Promise<(Session & { vpnUser: VpnUser })[]>;
   createSession(session: InsertSession): Promise<Session>;
   endSession(id: number): Promise<void>;
-
-  // Audit Logs
   createAuditLog(log: { userId?: number, action: string, entityType: string, entityId?: string, details?: string }): Promise<AuditLog>;
   getAuditLogs(): Promise<(AuditLog & { user: User | null })[]>;
 }
@@ -50,7 +42,6 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  // === Users ===
   async getUser(id: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
@@ -75,7 +66,6 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  // === VPN Users ===
   async getVpnUsers(): Promise<VpnUser[]> {
     return await db.select().from(vpnUsers).orderBy(desc(vpnUsers.lastConnected));
   }
@@ -95,13 +85,10 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  // === Sessions ===
   async getActiveSessions(): Promise<(Session & { vpnUser: VpnUser })[]> {
     return await db.query.sessions.findMany({
       where: eq(sessions.status, "active"),
-      with: {
-        vpnUser: true,
-      },
+      with: { vpnUser: true },
       orderBy: desc(sessions.startTime),
     });
   }
@@ -109,19 +96,15 @@ export class DatabaseStorage implements IStorage {
   async getSessionHistory(): Promise<(Session & { vpnUser: VpnUser })[]> {
     return await db.query.sessions.findMany({
       where: eq(sessions.status, "closed"),
-      with: {
-        vpnUser: true,
-      },
+      with: { vpnUser: true },
       orderBy: desc(sessions.endTime),
-      limit: 100, // Limit history for performance
+      limit: 500,
     });
   }
 
   async getAllSessions(): Promise<(Session & { vpnUser: VpnUser })[]> {
     return await db.query.sessions.findMany({
-      with: {
-        vpnUser: true,
-      },
+      with: { vpnUser: true },
       orderBy: desc(sessions.startTime),
     });
   }
@@ -133,14 +116,10 @@ export class DatabaseStorage implements IStorage {
 
   async endSession(id: number): Promise<void> {
     await db.update(sessions)
-      .set({ 
-        status: "closed", 
-        endTime: new Date(),
-      })
+      .set({ status: "closed", endTime: new Date() })
       .where(eq(sessions.id, id));
   }
 
-  // === Audit Logs ===
   async createAuditLog(log: { userId?: number, action: string, entityType: string, entityId?: string, details?: string }): Promise<AuditLog> {
     const [entry] = await db.insert(auditLogs).values(log).returning();
     return entry;
@@ -148,9 +127,7 @@ export class DatabaseStorage implements IStorage {
 
   async getAuditLogs(): Promise<(AuditLog & { user: User | null })[]> {
     return await db.query.auditLogs.findMany({
-      with: {
-        user: true,
-      },
+      with: { user: true },
       orderBy: desc(auditLogs.timestamp),
     });
   }
