@@ -27,6 +27,9 @@ export const vpnUsers = pgTable("vpn_users", {
   totalBytesReceived: integer("total_bytes_received").default(0),
   totalBytesSent: integer("total_bytes_sent").default(0),
   lastConnected: timestamp("last_connected"),
+  ccdStaticIp: text("ccd_static_ip"),
+  ccdRoutes: text("ccd_routes"),
+  serverId: text("server_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -40,6 +43,7 @@ export const sessions = pgTable("sessions", {
   remoteIp: text("remote_ip").notNull(),
   virtualIp: text("virtual_ip"),
   status: text("status", { enum: ["active", "closed"] }).notNull().default("active"),
+   serverId: text("server_id"),
 });
 
 export const auditLogs = pgTable("audit_logs", {

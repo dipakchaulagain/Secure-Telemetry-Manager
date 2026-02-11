@@ -1,5 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, buildUrl, type CreateUserRequest, type UpdateUserRequest } from "@shared/routes";
+import {
+  api,
+  buildUrl,
+  type CreateUserRequest,
+  type UpdateUserRequest,
+} from "@shared/routes";
 import { toast } from "@/hooks/use-toast";
 
 // ==========================================
@@ -76,6 +81,45 @@ export function useVpnUsers() {
       const res = await fetch(api.vpnUsers.list.path, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch VPN users");
       return api.vpnUsers.list.responses[200].parse(await res.json());
+    },
+  });
+}
+
+export function useUpdateVpnUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...data
+    }: {
+      id: number;
+      fullName?: string | null;
+      email?: string | null;
+      contact?: string | null;
+      type?: string;
+    }) => {
+      const url = buildUrl(api.vpnUsers.update.path, { id });
+      const res = await fetch(url, {
+        method: api.vpnUsers.update.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        throw new Error("Failed to update VPN user");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.vpnUsers.list.path] });
+      toast({ title: "VPN user updated successfully" });
+    },
+    onError: (err) => {
+      toast({
+        title: "Failed to update VPN user",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "destructive",
+      });
     },
   });
 }

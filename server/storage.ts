@@ -1,10 +1,16 @@
 import { db, pool } from "./db";
 import {
-  users, vpnUsers, sessions, auditLogs,
-  type User, type InsertUser,
-  type VpnUser, type InsertVpnUser,
-  type Session, type InsertSession,
-  type AuditLog
+  users,
+  vpnUsers,
+  sessions,
+  auditLogs,
+  type User,
+  type InsertUser,
+  type VpnUser,
+  type InsertVpnUser,
+  type Session,
+  type InsertSession,
+  type AuditLog,
 } from "@shared/schema";
 import { eq, desc, and } from "drizzle-orm";
 import session from "express-session";
@@ -19,6 +25,11 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   getUsers(): Promise<User[]>;
   updateUser(id: number, user: Partial<InsertUser>): Promise<User>;
+  getVpnUserByCommonName(cn: string): Promise<VpnUser | undefined>;
+  getVpnUserByCommonNameAndServer(
+    serverId: string,
+    cn: string,
+  ): Promise<VpnUser | undefined>;
   getVpnUsers(): Promise<VpnUser[]>;
   getVpnUser(id: number): Promise<VpnUser | undefined>;
   createVpnUser(user: InsertVpnUser): Promise<VpnUser>;
@@ -68,6 +79,30 @@ export class DatabaseStorage implements IStorage {
 
   async getVpnUsers(): Promise<VpnUser[]> {
     return await db.select().from(vpnUsers).orderBy(desc(vpnUsers.lastConnected));
+  }
+
+  async getVpnUserByCommonName(commonName: string): Promise<VpnUser | undefined> {
+    const [user] = await db
+      .select()
+      .from(vpnUsers)
+      .where(eq(vpnUsers.commonName, commonName));
+    return user;
+  }
+
+  async getVpnUserByCommonNameAndServer(
+    serverId: string,
+    commonName: string,
+  ): Promise<VpnUser | undefined> {
+    const [user] = await db
+      .select()
+      .from(vpnUsers)
+      .where(
+        and(
+          eq(vpnUsers.commonName, commonName),
+          eq(vpnUsers.serverId, serverId),
+        ),
+      );
+    return user;
   }
 
   async getVpnUser(id: number): Promise<VpnUser | undefined> {

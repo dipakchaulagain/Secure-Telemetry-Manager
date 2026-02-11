@@ -1,15 +1,15 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
-import { 
-  LayoutDashboard, 
-  Users, 
-  Network, 
-  ShieldAlert, 
-  History, 
-  LogOut, 
+import {
+  LayoutDashboard,
+  Users,
+  Network,
+  ShieldAlert,
+  History,
+  LogOut,
   Menu,
-  X
+  X,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -33,16 +33,17 @@ export function Layout({ children }: LayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navigation = [
-    { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-    { name: 'Active Sessions', href: '/sessions', icon: Network },
-    { name: 'VPN Users', href: '/vpn-users', icon: Users },
-    { name: 'History', href: '/history', icon: History },
+    { name: "Dashboard", href: "/", icon: LayoutDashboard },
+    { name: "Active Sessions", href: "/sessions", icon: Network },
+    { name: "VPN Users", href: "/vpn-users", icon: Users },
+    { name: "Accounting", href: "/accounting", icon: History },
   ];
 
   // Only admins see these
   const adminNavigation = [
-    { name: 'Portal Users', href: '/portal-users', icon: ShieldAlert },
-    { name: 'Audit Logs', href: '/audit', icon: History },
+    { name: "Portal Users", href: "/portal-users", icon: ShieldAlert },
+    { name: "VPN Servers", href: "/vpn-servers", icon: Network },
+    { name: "Audit Logs", href: "/audit", icon: History },
   ];
 
   const allNav = user?.role === 'admin' 

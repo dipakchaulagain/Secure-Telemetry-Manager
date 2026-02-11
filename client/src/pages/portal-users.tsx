@@ -52,6 +52,8 @@ export default function PortalUsersPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Username</TableHead>
+                  <TableHead>Full Name</TableHead>
+                  <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Created At</TableHead>
@@ -70,6 +72,12 @@ export default function PortalUsersPage() {
                       <TableCell className="font-medium flex items-center gap-2">
                         <ShieldCheck className="h-4 w-4 text-primary/50" />
                         {u.username}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {u.fullName || "—"}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {u.email || "—"}
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="capitalize">
@@ -103,6 +111,8 @@ function CreateUserDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
     defaultValues: {
       username: "",
       password: "",
+      fullName: "",
+      email: "",
       role: "viewer",
       isActive: true,
     },
@@ -155,6 +165,32 @@ function CreateUserDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
                   <FormLabel>Password</FormLabel>
                   <FormControl>
                     <Input type="password" placeholder="••••••••" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="fullName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Full Name</FormLabel>
+                  <FormControl>
+                    <Input placeholder="John Doe" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email</FormLabel>
+                  <FormControl>
+                    <Input type="email" placeholder="admin@example.com" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

@@ -13,8 +13,8 @@ import ActiveSessionsPage from "@/pages/active-sessions";
 import VpnUsersPage from "@/pages/vpn-users";
 import PortalUsersPage from "@/pages/portal-users";
 import AuditLogsPage from "@/pages/audit-logs";
-import HistoryPage from "@/pages/history";
 import AccountingPage from "@/pages/accounting";
+import VpnServersPage from "@/pages/vpn-servers";
 import NotFound from "@/pages/not-found";
 
 // Protected Route Wrapper
@@ -60,11 +60,11 @@ function Router() {
       <Route path="/accounting">
         <ProtectedRoute component={AccountingPage} />
       </Route>
-      <Route path="/history">
-        <ProtectedRoute component={HistoryPage} />
-      </Route>
       <Route path="/portal-users">
         <ProtectedRoute component={PortalUsersPage} />
+      </Route>
+      <Route path="/vpn-servers">
+        <ProtectedRoute component={VpnServersPage} />
       </Route>
       <Route path="/audit">
         <ProtectedRoute component={AuditLogsPage} />

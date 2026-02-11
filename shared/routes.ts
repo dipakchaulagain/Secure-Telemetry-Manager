@@ -1,5 +1,12 @@
 import { z } from 'zod';
-import { insertUserSchema, insertVpnUserSchema, users, vpnUsers, sessions, auditLogs } from './schema';
+import {
+  insertUserSchema,
+  insertVpnUserSchema,
+  users,
+  vpnUsers,
+  sessions,
+  auditLogs,
+} from './schema';
 
 // ============================================
 // SHARED ERROR SCHEMAS
@@ -101,6 +108,19 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/vpn-users/:id' as const,
+      // Common name is immutable; other fields can be updated
+      input: insertVpnUserSchema
+        .omit({ commonName: true })
+        .partial(),
+      responses: {
+        200: z.custom<typeof vpnUsers.$inferSelect>(),
+        404: errorSchemas.notFound,
+        400: errorSchemas.validation,
+      },
+    },
   },
 
   // Session Monitoring
@@ -152,6 +172,35 @@ export const api = {
       path: '/api/audit-logs' as const,
       responses: {
         200: z.array(z.custom<typeof auditLogs.$inferSelect & { user: typeof users.$inferSelect | null }>()),
+      },
+    },
+  },
+
+  // Telemetry ingestion (OpenVPN agent)
+  telemetry: {
+    ingest: {
+      method: 'POST' as const,
+      path: '/api/v1/events' as const,
+      input: z.object({
+        server_id: z.string(),
+        sent_at: z.string(), // ISO timestamp from agent
+        events: z.array(
+          z.object({
+            event_id: z.string(),
+            seq: z.number(),
+            type: z.enum(['SESSION_CONNECTED', 'SESSION_DISCONNECTED']),
+            common_name: z.string(),
+            real_ip: z.string().nullable().optional(),
+            real_port: z.string().nullable().optional(),
+            virtual_ip: z.string().nullable().optional(),
+            event_time_vpn: z.string(), // ISO timestamp from VPN host
+          }),
+        ),
+      }),
+      responses: {
+        202: z.object({ received: z.number() }),
+        400: errorSchemas.validation,
+        401: errorSchemas.unauthorized,
       },
     },
   },
