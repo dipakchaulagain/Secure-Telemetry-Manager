@@ -45,20 +45,89 @@ The `server_id` in the body must match the `server_id` associated with the API K
 - `USERS_UPDATE` — Bulk or single certificate status sync (VALID/EXPIRED/REVOKED)
 - `CCD_INFO` — Client-specific configuration (static IP, routes)
 
-**Payload Example:**
+**Payload Examples:**
+
+#### 1. Session Events (Connected/Disconnected)
 
 ```json
 {
-  "server_id": "vpn-unique-id-from-portal",
+  "server_id": "vpn-node-01",
   "sent_at": "2026-02-13T12:00:00Z",
   "events": [
     {
-      "event_id": "unique-uuid-v4",
+      "event_id": "uuid-1",
       "type": "SESSION_CONNECTED",
       "common_name": "jdoe@company.com",
       "real_ip": "203.0.113.5",
       "virtual_ip": "10.8.0.2",
       "event_time_vpn": "2026-02-13T12:00:00Z"
+    },
+    {
+      "event_id": "uuid-2",
+      "type": "SESSION_DISCONNECTED",
+      "common_name": "jdoe@company.com",
+      "event_time_vpn": "2026-02-13T12:30:00Z"
+    }
+  ]
+}
+```
+
+#### 2. User/Certificate Status Sync (`USERS_UPDATE`)
+
+**Initial Bulk Sync (Agent Startup):**
+```json
+{
+  "server_id": "vpn-node-01",
+  "sent_at": "2026-02-13T12:00:00Z",
+  "events": [
+    {
+      "event_id": "uuid-3",
+      "type": "USERS_UPDATE",
+      "action": "INITIAL",
+      "source": "index.txt",
+      "users": [
+        { "common_name": "alice", "status": "VALID", "expires_at_index": "290124060904Z" },
+        { "common_name": "bob", "status": "EXPIRED", "expires_at_index": "240112065432Z" }
+      ],
+      "event_time_agent": "2026-02-13T12:00:00Z"
+    }
+  ]
+}
+```
+
+**Individual Incremental Update:**
+```json
+{
+  "server_id": "vpn-node-01",
+  "sent_at": "2026-02-13T12:05:00Z",
+  "events": [
+    {
+      "event_id": "uuid-4",
+      "type": "USERS_UPDATE",
+      "common_name": "charlie",
+      "status": "REVOKED",
+      "action": "REVOKED",
+      "revoked_at_index": "221206054507Z",
+      "event_time_agent": "2026-02-13T12:05:00Z"
+    }
+  ]
+}
+```
+
+#### 3. Client Configuration Information (`CCD_INFO`)
+
+```json
+{
+  "server_id": "vpn-node-01",
+  "sent_at": "2026-02-13T12:10:00Z",
+  "events": [
+    {
+      "event_id": "uuid-5",
+      "type": "CCD_INFO",
+      "common_name": "alice",
+      "ccd_path": "/etc/openvpn/ccd/alice",
+      "ccd_content_b64": "aWZjb25maWctcHVzaCAxMC44LjAuNiAyNTUuMjU1LjI1NS4w",
+      "event_time_agent": "2026-02-13T12:10:00Z"
     }
   ]
 }
