@@ -45,6 +45,15 @@ The `server_id` in the body must match the `server_id` associated with the API K
 - `USERS_UPDATE` — Bulk or single certificate status sync (VALID/EXPIRED/REVOKED)
 - `CCD_INFO` — Client-specific configuration (static IP, routes)
 
+**Telemetry Ingestion Rules:**
+
+The portal enforces strict VPN user identification to prevent data pollution from unregistered clients:
+
+1.  **User Creation**: New VPN users are automatically created **ONLY** when a `USERS_UPDATE` event is received with an `action` of `INITIAL` or `ADDED`.
+2.  **Existence enforced**: Events of type `SESSION_CONNECTED`, `SESSION_DISCONNECTED`, and `CCD_INFO` require the VPN user (matched via `common_name`) to already exist in the database.
+3.  **Filtered Updates**: `USERS_UPDATE` events with actions like `REVOKED` or `EXPIRED` will be ignored if the user does not already exist.
+4.  **Acknowledgment**: The API returns HTTP `202 Accepted` for all structurally valid payloads, even if individual events within the payload are skipped due to missing users (these are logged as warnings on the server).
+
 **Payload Examples:**
 
 #### 1. Session Events (Connected/Disconnected)
