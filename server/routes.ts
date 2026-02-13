@@ -151,37 +151,20 @@ export async function registerRoutes(
     res.json(sessions);
   });
 
-  app.post(api.sessions.kill.path, async (req, res) => {
-    if (!req.isAuthenticated() || req.user?.role === 'viewer') return res.sendStatus(403);
-    const id = parseInt(req.params.id);
-    await storage.endSession(id);
-    await storage.createAuditLog({
-      userId: req.user.id,
-      action: "KILL_SESSION",
-      entityType: "session",
-      entityId: String(id),
-      details: "Terminated active VPN session"
-    });
-    res.json({ message: "Session terminated" });
-  });
 
   app.get(api.stats.get.path, async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const active = await storage.getActiveSessions();
     const allVpnUsers = await storage.getVpnUsers();
-    // Aggregate traffic from ALL VPN users (cumulative)
-    const totalBytesSent = allVpnUsers.reduce((acc, u) => acc + (u.totalBytesSent || 0), 0);
-    const totalBytesReceived = allVpnUsers.reduce((acc, u) => acc + (u.totalBytesReceived || 0), 0);
+
     // User status breakdown
     const validCount = allVpnUsers.filter(u => u.accountStatus === "VALID").length;
     const expiredCount = allVpnUsers.filter(u => u.accountStatus === "EXPIRED").length;
     const revokedCount = allVpnUsers.filter(u => u.accountStatus === "REVOKED").length;
+
     res.json({
       activeSessions: active.length,
       totalVpnUsers: allVpnUsers.length,
-      totalBytesSent,
-      totalBytesReceived,
-      bytesTransferred: totalBytesSent + totalBytesReceived,
       vpnUsersByStatus: { valid: validCount, expired: expiredCount, revoked: revokedCount },
       serverStatus: "Online"
     });

@@ -1,18 +1,9 @@
 import { useStats, useActiveSessions, useVpnUsers } from "@/hooks/use-data";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Users, ArrowUp, ArrowDown, Server, Activity, Shield, ShieldAlert, ShieldX, Wifi } from "lucide-react";
+import { Users, Server, Activity, Shield, ShieldAlert, ShieldX, Wifi } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 import { format } from "date-fns";
-
-// Helper to format bytes
-function formatBytes(bytes: number) {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
 
 // SIEM-style Stats Card
 function StatCard({ title, value, icon: Icon, description, accent = "primary" }: any) {
@@ -74,8 +65,8 @@ export default function DashboardPage() {
   if (statsLoading) {
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[...Array(2)].map((_, i) => (
             <Skeleton key={i} className="h-28 rounded-xl" />
           ))}
         </div>
@@ -92,7 +83,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Primary Stats Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <StatCard
           title="Active Sessions"
           value={stats?.activeSessions || 0}
@@ -106,20 +97,6 @@ export default function DashboardPage() {
           icon={Users}
           description="Registered certificates"
           accent="primary"
-        />
-        <StatCard
-          title="Data Sent"
-          value={formatBytes(stats?.totalBytesSent || 0)}
-          icon={ArrowUp}
-          description="Cumulative upload"
-          accent="cyan"
-        />
-        <StatCard
-          title="Data Received"
-          value={formatBytes(stats?.totalBytesReceived || 0)}
-          icon={ArrowDown}
-          description="Cumulative download"
-          accent="violet"
         />
       </div>
 

@@ -110,7 +110,7 @@ function CreateUserDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
       password: "",
       fullName: "",
       email: "",
-      role: "viewer",
+      role: "operator",
       isActive: true,
     },
   });
@@ -208,7 +208,6 @@ function CreateUserDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
                     <SelectContent>
                       <SelectItem value="admin">Admin (Full Access)</SelectItem>
                       <SelectItem value="operator">Operator (Manage Sessions)</SelectItem>
-                      <SelectItem value="viewer">Viewer (Read Only)</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />

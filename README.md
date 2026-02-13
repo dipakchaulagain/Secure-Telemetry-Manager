@@ -12,11 +12,11 @@ Secure web application for monitoring, managing, and auditing OpenVPN telemetry 
 
 ## Features
 
-- **Dashboard** — Real-time SIEM-style overview: active sessions, VPN user stats, certificate status breakdown (Valid/Expired/Revoked), data transfer metrics (Sent/Received), and live connection feed.
-- **Accounting** — Session history with per-day Sent vs Received traffic chart, Duration column, search/filter, and summary statistics.
-- **Active Sessions** — Live VPN session monitor with user details, IPs, and session kill capability.
+- **Dashboard** — Real-time SIEM-style overview: active sessions, VPN user stats, and certificate status breakdown (Valid/Expired/Revoked).
+- **Accounting** — Session history with Duration monitoring, Server ID auditing, advanced time-based/user-based filtering, and CSV export for compliance.
+- **Active Sessions** — Live VPN session monitor with user details and real-time connection status.
 - **VPN User Management** — Manage metadata for VPN clients (Full Name, Email, Contact, Type). Color-coded status badges for account and connection states.
-- **Portal User Management** — RBAC with three roles: Admin, Operator, Viewer. Forced password change on first login for all new users.
+- **Portal User Management** — RBAC with two roles: Admin and Operator. Forced password change on first login for all new users.
 - **Audit Logs** — Comprehensive tracking of all administrative actions.
 - **VPN Server Management** — Register multiple OpenVPN servers, manage API keys for telemetry ingestion.
 
@@ -24,9 +24,8 @@ Secure web application for monitoring, managing, and auditing OpenVPN telemetry 
 
 | Role | Permissions |
 |------|------------|
-| **Admin** | Full access: user management, VPN server management, session kill, all views |
-| **Operator** | Read access + session kill capability |
-| **Viewer** | Read-only access to all monitoring pages |
+| **Admin** | Full access: user management, VPN server management, all views |
+| **Operator** | Read-only access to all monitoring and management pages |
 
 ## API Documentation for Telemetry Agent
 

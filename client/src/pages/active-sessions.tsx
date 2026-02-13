@@ -6,14 +6,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2, RefreshCw } from "lucide-react";
 
-function formatBytes(bytes: number) {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
 function calculateDuration(startTime: string) {
   const start = new Date(startTime).getTime();
   const now = new Date().getTime();
@@ -72,13 +64,12 @@ export default function ActiveSessionsPage() {
                   <TableHead>Virtual IP</TableHead>
                   <TableHead>Connected At</TableHead>
                   <TableHead>Duration</TableHead>
-                  <TableHead className="text-right">Sent / Received</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center">
+                    <TableCell colSpan={5} className="h-24 text-center">
                       <div className="flex justify-center items-center">
                         <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
                         Loading sessions...
@@ -87,7 +78,7 @@ export default function ActiveSessionsPage() {
                   </TableRow>
                 ) : sessions?.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                       No active sessions found.
                     </TableCell>
                   </TableRow>
@@ -97,7 +88,7 @@ export default function ActiveSessionsPage() {
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                          {session.vpnUser.commonName}
+                          {session.vpnUser?.commonName || "Unknown"}
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-xs">{session.remoteIp}</TableCell>
@@ -105,11 +96,6 @@ export default function ActiveSessionsPage() {
                       <TableCell>{format(new Date(session.startTime), "MMM d, HH:mm:ss")}</TableCell>
                       <TableCell className="font-mono text-xs">
                         {calculateDuration(session.startTime)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-xs">
-                        <span className="text-green-600">↑{formatBytes(session.bytesSent)}</span>
-                        <span className="mx-1 text-muted-foreground">/</span>
-                        <span className="text-blue-600">↓{formatBytes(session.bytesReceived)}</span>
                       </TableCell>
                     </TableRow>
                   ))

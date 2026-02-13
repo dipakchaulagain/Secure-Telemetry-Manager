@@ -49,28 +49,6 @@ export function useSessionHistory() {
   });
 }
 
-export function useKillSession() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: number) => {
-      const url = buildUrl(api.sessions.kill.path, { id });
-      const res = await fetch(url, {
-        method: api.sessions.kill.method,
-        credentials: "include"
-      });
-      if (!res.ok) throw new Error("Failed to kill session");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.sessions.active.path] });
-      queryClient.invalidateQueries({ queryKey: [api.stats.get.path] });
-      toast({ title: "Session terminated", variant: "default" });
-    },
-    onError: () => {
-      toast({ title: "Failed to terminate session", variant: "destructive" });
-    }
-  });
-}
 
 // ==========================================
 // VPN USERS

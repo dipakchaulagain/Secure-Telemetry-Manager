@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useSessionHistory } from "@/hooks/use-data";
-import { format, differenceInMinutes, differenceInHours } from "date-fns";
+import { format, differenceInMinutes, differenceInHours, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import {
   Table,
   TableBody,
@@ -17,24 +17,11 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowUpDown, ArrowDown, ArrowUp, Clock, Search } from "lucide-react";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  Tooltip,
-  XAxis,
-  YAxis,
-  ResponsiveContainer,
-} from "recharts";
-
-function formatBytes(bytes: number) {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-}
+import { Button } from "@/components/ui/button";
+import { Loader2, ArrowUpDown, Clock, Search, Download, Calendar as CalendarIcon, X } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
 
 function formatDuration(startTime: string, endTime: string | null) {
   if (!endTime) return "—";
@@ -51,88 +38,93 @@ function formatDuration(startTime: string, endTime: string | null) {
 export default function AccountingPage() {
   const { data: sessions, isLoading } = useSessionHistory();
   const [searchTerm, setSearchTerm] = useState("");
+  const [startDate, setStartDate] = useState<Date | undefined>();
+  const [endDate, setEndDate] = useState<Date | undefined>();
 
   // Filtered sessions
   const filteredSessions = useMemo(() => {
     if (!sessions) return [];
-    if (!searchTerm.trim()) return sessions;
-    const term = searchTerm.toLowerCase();
-    return sessions.filter((s: any) =>
-      s.vpnUser?.commonName?.toLowerCase().includes(term) ||
-      s.remoteIp?.toLowerCase().includes(term)
-    );
-  }, [sessions, searchTerm]);
+
+    return sessions.filter((s: any) => {
+      // User/IP Filter
+      const term = searchTerm.toLowerCase();
+      const matchesSearch = !searchTerm.trim() ||
+        s.vpnUser?.commonName?.toLowerCase().includes(term) ||
+        s.remoteIp?.toLowerCase().includes(term);
+
+      if (!matchesSearch) return false;
+
+      // Date Range Filter
+      if (startDate || endDate) {
+        const sessionDate = new Date(s.startTime);
+        const start = startDate ? startOfDay(startDate) : new Date(0);
+        const end = endDate ? endOfDay(endDate) : new Date(8640000000000000); // Max date
+
+        if (!isWithinInterval(sessionDate, { start, end })) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [sessions, searchTerm, startDate, endDate]);
 
   // Summary stats
-  const totalSessions = sessions?.length || 0;
-  const totalBytesIn = sessions?.reduce((acc: number, s: any) => acc + (s.bytesReceived || 0), 0) || 0;
-  const totalBytesOut = sessions?.reduce((acc: number, s: any) => acc + (s.bytesSent || 0), 0) || 0;
+  const totalSessionsCount = filteredSessions.length;
   const avgDurationMinutes = useMemo(() => {
-    if (!sessions || sessions.length === 0) return 0;
-    const withEnd = sessions.filter((s: any) => s.endTime);
+    if (filteredSessions.length === 0) return 0;
+    const withEnd = filteredSessions.filter((s: any) => s.endTime);
     if (withEnd.length === 0) return 0;
     const totalMin = withEnd.reduce((acc: number, s: any) => {
       return acc + differenceInMinutes(new Date(s.endTime), new Date(s.startTime));
     }, 0);
     return Math.round(totalMin / withEnd.length);
-  }, [sessions]);
+  }, [filteredSessions]);
 
-  // Chart data: daily sent vs received
-  const chartData = useMemo(() => {
-    if (!sessions) return [];
-    const daily: Record<string, { date: string; sent: number; received: number }> = {};
-    sessions.forEach((s: any) => {
-      const day = format(new Date(s.startTime), "yyyy-MM-dd");
-      if (!daily[day]) {
-        daily[day] = { date: day, sent: 0, received: 0 };
-      }
-      daily[day].sent += s.bytesSent || 0;
-      daily[day].received += s.bytesReceived || 0;
-    });
-    return Object.values(daily).sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-    );
-  }, [sessions]);
+  // CSV Export
+  const exportToCsv = () => {
+    if (filteredSessions.length === 0) return;
+
+    const headers = ["Common Name", "Remote IP", "Virtual IP", "Server ID", "Start Time", "End Time", "Duration"];
+    const rows = filteredSessions.map((s: any) => [
+      s.vpnUser?.commonName || "Unknown",
+      s.remoteIp || "",
+      s.virtualIp || "",
+      s.serverId || "",
+      format(new Date(s.startTime), "yyyy-MM-dd HH:mm:ss"),
+      s.endTime ? format(new Date(s.endTime), "yyyy-MM-dd HH:mm:ss") : "Active",
+      formatDuration(s.startTime, s.endTime),
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.map(val => `"${val}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `vpn_sessions_${format(new Date(), "yyyy-MM-dd")}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="space-y-6">
       {/* Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="border-border/40 bg-card/50 backdrop-blur-sm">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Sessions</p>
-                <p className="text-2xl font-bold tracking-tight">{totalSessions}</p>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Sessions (Filtered)</p>
+                <p className="text-2xl font-bold tracking-tight">{totalSessionsCount}</p>
               </div>
               <div className="h-10 w-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
                 <ArrowUpDown className="h-5 w-5" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-border/40 bg-card/50 backdrop-blur-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Bytes In</p>
-                <p className="text-2xl font-bold tracking-tight">{formatBytes(totalBytesIn)}</p>
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-cyan-500/10 flex items-center justify-center text-cyan-500">
-                <ArrowDown className="h-5 w-5" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-border/40 bg-card/50 backdrop-blur-sm">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Bytes Out</p>
-                <p className="text-2xl font-bold tracking-tight">{formatBytes(totalBytesOut)}</p>
-              </div>
-              <div className="h-10 w-10 rounded-lg bg-violet-500/10 flex items-center justify-center text-violet-500">
-                <ArrowUp className="h-5 w-5" />
               </div>
             </div>
           </CardContent>
@@ -152,174 +144,162 @@ export default function AccountingPage() {
         </Card>
       </div>
 
-      {/* Traffic Chart */}
+      {/* Advanced Filters */}
       <Card className="border-border/40 bg-card/50 backdrop-blur-sm">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold">Traffic Over Time</CardTitle>
-          <CardDescription className="text-xs">
-            Sent vs received data per day based on session history
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="h-[300px]">
-          {isLoading ? (
-            <div className="h-full flex items-center justify-center">
-              <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
-              <span className="text-sm text-muted-foreground">Loading...</span>
-            </div>
-          ) : chartData.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-              No historical data available yet.
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="acctSent" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="acctReceived" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis
-                  dataKey="date"
-                  stroke="hsl(var(--muted-foreground))"
-                  fontSize={11}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(v) => format(new Date(v), "MMM d")}
-                />
-                <YAxis
-                  stroke="hsl(var(--muted-foreground))"
-                  fontSize={11}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(value) => formatBytes(value as number)}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--popover))",
-                    borderColor: "hsl(var(--border))",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                  }}
-                  formatter={(value: any, name: string) => [
-                    formatBytes(value as number),
-                    name === "sent" ? "Sent" : "Received"
-                  ]}
-                  labelFormatter={(label) => format(new Date(label), "MMM d, yyyy")}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="sent"
-                  stroke="#06b6d4"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#acctSent)"
-                  name="sent"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="received"
-                  stroke="#8b5cf6"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#acctReceived)"
-                  name="received"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Session Table */}
-      <Card className="border-border/40 bg-card/50 backdrop-blur-sm">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between gap-4">
+        <CardHeader className="pb-3 border-b border-border/10">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <CardTitle className="text-base font-semibold">Session History</CardTitle>
+              <CardTitle className="text-base font-semibold">Accounting Controls</CardTitle>
               <CardDescription className="text-xs">
-                Per-session connection records for audit and compliance
+                Filter by user, IP, or date range and export records.
               </CardDescription>
             </div>
-            <div className="relative w-64">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 gap-2 bg-emerald-500/10 text-emerald-600 border-emerald-500/20 hover:bg-emerald-500/20"
+                onClick={exportToCsv}
+                disabled={filteredSessions.length === 0}
+              >
+                <Download className="h-4 w-4" />
+                Export CSV
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search user or IP..."
+                placeholder="User or IP..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-8 h-9 text-sm bg-background/50"
               />
             </div>
+
+            <div className="flex items-center gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "h-9 w-full justify-start text-left font-normal text-xs",
+                      !startDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {startDate ? format(startDate, "PPP") : "Start Date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={startDate}
+                    onSelect={setStartDate}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              {startDate && (
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setStartDate(undefined)}>
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "h-9 w-full justify-start text-left font-normal text-xs",
+                      !endDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {endDate ? format(endDate, "PPP") : "End Date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={endDate}
+                    onSelect={setEndDate}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              {endDate && (
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEndDate(undefined)}>
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-md border border-border/40">
+        </CardContent>
+      </Card>
+
+      {/* Session Table */}
+      <Card className="border-border/40 bg-card/50 backdrop-blur-sm">
+        <CardContent className="p-0">
+          <div className="rounded-md">
             <Table>
               <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider">User</TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider">Started</TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider">Ended</TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider">Duration</TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-right">Bytes In</TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-right">Bytes Out</TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-right">Total</TableHead>
+                <TableRow className="hover:bg-transparent bg-muted/30">
+                  <TableHead className="text-[10px] font-bold uppercase tracking-wider px-4 h-10">User</TableHead>
+                  <TableHead className="text-[10px] font-bold uppercase tracking-wider h-10">Remote IP</TableHead>
+                  <TableHead className="text-[10px] font-bold uppercase tracking-wider h-10">Server ID</TableHead>
+                  <TableHead className="text-[10px] font-bold uppercase tracking-wider h-10">Started</TableHead>
+                  <TableHead className="text-[10px] font-bold uppercase tracking-wider h-10">Ended</TableHead>
+                  <TableHead className="text-[10px] font-bold uppercase tracking-wider text-right px-4 h-10">Duration</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center">
+                    <TableCell colSpan={6} className="h-24 text-center">
                       <div className="flex justify-center items-center">
                         <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
-                        Loading session data...
+                        Loading history...
                       </div>
                     </TableCell>
                   </TableRow>
                 ) : filteredSessions.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={6}
                       className="h-24 text-center text-muted-foreground"
                     >
-                      {searchTerm ? "No sessions match your search." : "No session records found."}
+                      No sessions found for selected filters.
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredSessions.map((session: any) => {
-                    const inBytes = session.bytesReceived || 0;
-                    const outBytes = session.bytesSent || 0;
-                    const total = inBytes + outBytes;
-
                     return (
-                      <TableRow key={session.id} className="hover:bg-muted/30">
-                        <TableCell className="font-medium text-sm">
+                      <TableRow key={session.id} className="hover:bg-muted/30 border-b border-border/5">
+                        <TableCell className="font-semibold text-xs px-4">
                           {session.vpnUser?.commonName || "Unknown"}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {format(new Date(session.startTime), "MMM d, HH:mm")}
+                        <TableCell className="text-xs font-mono text-muted-foreground">
+                          {session.remoteIp || "—"}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
+                        <TableCell className="text-[10px] font-mono text-muted-foreground/70">
+                          {session.serverId || "Global"}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {format(new Date(session.startTime), "MMM d, HH:mm:ss")}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
                           {session.endTime
-                            ? format(new Date(session.endTime), "MMM d, HH:mm")
-                            : "—"}
+                            ? format(new Date(session.endTime), "MMM d, HH:mm:ss")
+                            : <Badge variant="outline" className="text-[9px] h-4 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">Active</Badge>}
                         </TableCell>
-                        <TableCell className="text-sm font-mono text-muted-foreground">
+                        <TableCell className="text-right font-mono text-xs px-4">
                           {formatDuration(session.startTime, session.endTime)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs">
-                          {formatBytes(inBytes)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs">
-                          {formatBytes(outBytes)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs font-semibold">
-                          {formatBytes(total)}
                         </TableCell>
                       </TableRow>
                     );

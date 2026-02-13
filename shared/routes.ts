@@ -141,14 +141,6 @@ export const api = {
         200: z.array(z.custom<typeof sessions.$inferSelect & { vpnUser: typeof vpnUsers.$inferSelect }>()),
       },
     },
-    kill: {
-      method: 'POST' as const,
-      path: '/api/sessions/:id/kill' as const,
-      responses: {
-        200: z.object({ message: z.string() }),
-        404: errorSchemas.notFound,
-      },
-    },
   },
 
   // System Stats for Dashboard
@@ -160,7 +152,6 @@ export const api = {
         200: z.object({
           activeSessions: z.number(),
           totalVpnUsers: z.number(),
-          bytesTransferred: z.number(),
           serverStatus: z.string(),
         }),
       },
