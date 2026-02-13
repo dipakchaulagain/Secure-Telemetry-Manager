@@ -138,8 +138,8 @@ function VpnUserDetails({ user, onClose }: VpnUserDetailsProps) {
                     {session.endTime
                       ? format(new Date(session.endTime), "PPpp")
                       : currentSession
-                      ? "Active"
-                      : "—"}
+                        ? "Active"
+                        : "—"}
                   </p>
                   <p>
                     <span className="text-muted-foreground">Bytes In/Out: </span>
@@ -193,29 +193,26 @@ export default function VpnUsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">VPN Users</h1>
-          <p className="text-muted-foreground">Registry of all known client certificates.</p>
-        </div>
-        <div className="relative w-full md:w-64">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input 
-            type="search" 
-            placeholder="Search users..." 
-            className="pl-9"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-      </div>
-
       <Card>
         <CardHeader>
-          <CardTitle>User Directory</CardTitle>
-          <CardDescription>
-            Historical usage stats and current status for all users.
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>User Directory</CardTitle>
+              <CardDescription className="mt-1">
+                Historical usage stats and current status for all users.
+              </CardDescription>
+            </div>
+            <div className="relative w-full md:w-64">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Search users..."
+                className="pl-9"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="rounded-md border">
@@ -277,9 +274,9 @@ export default function VpnUsersPage() {
                       <TableCell className="text-muted-foreground text-sm">
                         {user.lastConnected
                           ? format(
-                              new Date(user.lastConnected),
-                              "MMM d, yyyy HH:mm",
-                            )
+                            new Date(user.lastConnected),
+                            "MMM d, yyyy HH:mm",
+                          )
                           : "Never"}
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs text-muted-foreground">

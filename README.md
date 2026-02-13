@@ -14,25 +14,44 @@ Robust web application for monitoring and managing OpenVPN telemetry data.
 
 The telemetry agent should send session events to the following endpoint:
 
-### POST /api/v1/events (Telemetry Agent Only)
+### POST /api/v1/events (Telemetry Agent)
 
-The agent should POST JSON data when a user connects, disconnects, or periodically for status updates.
+The agent sends batched events (connect/disconnect) in a JSON payload.
 
-**Authentication:** API Key (Managed via environment variables)
+**Endpoint:** `POST /api/v1/events`
+**Authentication:**
+- Header: `Authorization: Bearer <VPN_SERVER_API_KEY>`
+- The `server_id` in the body must match the `server_id` associated with the API Key.
 
 **Payload Structure:**
 
 ```json
 {
-  "event": "connect" | "disconnect" | "update",
-  "common_name": "user@domain.com",
-  "remote_ip": "1.2.3.4",
-  "virtual_ip": "10.8.0.5",
-  "bytes_received": 1048576,
-  "bytes_sent": 524288,
-  "timestamp": "2026-02-09T12:00:00Z"
+  "server_id": "vpn-unique-id-from-portal",
+  "sent_at": "2026-02-13T12:00:00Z",
+  "events": [
+    {
+      "event_id": "unique-uuid-v4",
+      "seq": 1,
+      "type": "SESSION_CONNECTED",
+      "common_name": "jdoe@company.com",
+      "real_ip": "203.0.113.5",
+      "real_port": "1194",
+      "virtual_ip": "10.8.0.2",
+      "event_time_vpn": "2026-02-13T12:00:00Z"
+    },
+    {
+      "event_id": "unique-uuid-v4-2",
+      "seq": 2,
+      "type": "SESSION_DISCONNECTED",
+      "common_name": "jdoe@company.com",
+      "event_time_vpn": "2026-02-13T12:30:00Z"
+    }
+  ]
 }
 ```
+
+**Note:** The system enforces idempotency using `event_id`. Duplicate events with the same `event_id` will be ignored.
 
 ## Docker Deployment
 

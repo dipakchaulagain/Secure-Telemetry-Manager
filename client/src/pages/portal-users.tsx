@@ -18,7 +18,7 @@ export default function PortalUsersPage() {
   const { data: users, isLoading } = usePortalUsers();
   const [open, setOpen] = useState(false);
   const { user: currentUser } = useAuth();
-  
+
   if (currentUser?.role !== "admin") {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center space-y-4 pt-20">
@@ -33,18 +33,15 @@ export default function PortalUsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Portal Users</h1>
-          <p className="text-muted-foreground">Manage administrative access to this dashboard.</p>
-        </div>
-        <CreateUserDialog open={open} onOpenChange={setOpen} />
-      </div>
-
       <Card>
         <CardHeader>
-          <CardTitle>Administrators & Operators</CardTitle>
-          <CardDescription>Users with login access to the web interface.</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Administrators & Operators</CardTitle>
+              <CardDescription className="mt-1">Users with login access to the web interface.</CardDescription>
+            </div>
+            <CreateUserDialog open={open} onOpenChange={setOpen} />
+          </div>
         </CardHeader>
         <CardContent>
           <div className="rounded-md border">

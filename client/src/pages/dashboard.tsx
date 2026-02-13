@@ -69,34 +69,29 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
-        <p className="text-muted-foreground">System overview and real-time metrics.</p>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard 
-          title="Active Sessions" 
-          value={stats?.activeSessions || 0} 
-          icon={Activity} 
+        <StatCard
+          title="Active Sessions"
+          value={stats?.activeSessions || 0}
+          icon={Activity}
           description="Currently connected users"
         />
-        <StatCard 
-          title="Total Traffic" 
-          value={formatBytes(stats?.bytesTransferred || 0)} 
-          icon={ArrowUp} 
+        <StatCard
+          title="Total Traffic"
+          value={formatBytes(stats?.bytesTransferred || 0)}
+          icon={ArrowUp}
           description="Total bandwidth usage"
         />
-        <StatCard 
-          title="VPN Users" 
-          value={stats?.totalVpnUsers || 0} 
-          icon={Users} 
+        <StatCard
+          title="VPN Users"
+          value={stats?.totalVpnUsers || 0}
+          icon={Users}
           description="Registered client certificates"
         />
-        <StatCard 
-          title="Server Status" 
-          value={stats?.serverStatus || "Unknown"} 
-          icon={Server} 
+        <StatCard
+          title="Server Status"
+          value={stats?.serverStatus || "Unknown"}
+          icon={Server}
           description="Core service health"
         />
       </div>
@@ -112,41 +107,41 @@ export default function DashboardPage() {
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="colorTraffic" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis 
-                  dataKey="time" 
-                  stroke="hsl(var(--muted-foreground))" 
-                  fontSize={12} 
-                  tickLine={false} 
-                  axisLine={false} 
+                <XAxis
+                  dataKey="time"
+                  stroke="hsl(var(--muted-foreground))"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
                 />
-                <YAxis 
-                  stroke="hsl(var(--muted-foreground))" 
-                  fontSize={12} 
-                  tickLine={false} 
-                  axisLine={false} 
-                  tickFormatter={(value) => `${value} MB`} 
+                <YAxis
+                  stroke="hsl(var(--muted-foreground))"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(value) => `${value} MB`}
                 />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'hsl(var(--popover))', 
-                    borderColor: 'hsl(var(--border))', 
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--popover))',
+                    borderColor: 'hsl(var(--border))',
                     borderRadius: '8px',
                     boxShadow: 'var(--shadow-md)'
                   }}
                   itemStyle={{ color: 'hsl(var(--foreground))' }}
                 />
-                <Area 
-                  type="monotone" 
-                  dataKey="traffic" 
-                  stroke="hsl(var(--primary))" 
-                  strokeWidth={2} 
-                  fillOpacity={1} 
-                  fill="url(#colorTraffic)" 
+                <Area
+                  type="monotone"
+                  dataKey="traffic"
+                  stroke="hsl(var(--primary))"
+                  strokeWidth={2}
+                  fillOpacity={1}
+                  fill="url(#colorTraffic)"
                 />
               </AreaChart>
             </ResponsiveContainer>

@@ -57,14 +57,6 @@ export default function AccountingPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Accounting</h1>
-        <p className="text-muted-foreground">
-          Session-level accounting data, historical connection logs, and usage
-          trends.
-        </p>
-      </div>
-
       <Card>
         <CardHeader>
           <CardTitle>Session Accounting</CardTitle>
@@ -124,9 +116,9 @@ export default function AccountingPage() {
                         <TableCell className="text-sm">
                           {session.endTime
                             ? format(
-                                new Date(session.endTime),
-                                "MMM d, HH:mm",
-                              )
+                              new Date(session.endTime),
+                              "MMM d, HH:mm",
+                            )
                             : "-"}
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs">

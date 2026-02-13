@@ -4,6 +4,15 @@ import { setupAuth } from "./auth";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
+import crypto from "crypto";
+
+function generateServerId(): string {
+  return `vpn-${crypto.randomBytes(6).toString("hex")}`;
+}
+
+function generateApiKey(): string {
+  return crypto.randomBytes(32).toString("hex");
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -139,21 +148,113 @@ export async function registerRoutes(
     res.json(logs);
   });
 
+  // ==========================================
+  // VPN SERVER MANAGEMENT
+  // ==========================================
+
+  app.get(api.vpnServers.list.path, async (req, res) => {
+    if (!req.isAuthenticated() || req.user?.role !== 'admin') return res.sendStatus(403);
+    const servers = await storage.getVpnServers();
+    res.json(servers);
+  });
+
+  app.post(api.vpnServers.create.path, async (req, res) => {
+    if (!req.isAuthenticated() || req.user?.role !== 'admin') return res.sendStatus(403);
+    try {
+      const input = api.vpnServers.create.input.parse(req.body);
+      const server = await storage.createVpnServer({
+        ...input,
+        serverId: generateServerId(),
+        apiKey: generateApiKey(),
+      });
+      await storage.createAuditLog({
+        userId: req.user.id,
+        action: "CREATE_VPN_SERVER",
+        entityType: "vpn_server",
+        entityId: String(server.id),
+        details: `Registered VPN server "${server.name}" (${server.serverId})`,
+      });
+      res.status(201).json(server);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error" });
+      }
+      throw err;
+    }
+  });
+
+  app.delete(api.vpnServers.delete.path, async (req, res) => {
+    if (!req.isAuthenticated() || req.user?.role !== 'admin') return res.sendStatus(403);
+    const id = parseInt(req.params.id);
+    const server = await storage.getVpnServer(id);
+    if (!server) return res.status(404).json({ message: "Server not found" });
+    await storage.deleteVpnServer(id);
+    await storage.createAuditLog({
+      userId: req.user.id,
+      action: "DELETE_VPN_SERVER",
+      entityType: "vpn_server",
+      entityId: String(id),
+      details: `Removed VPN server "${server.name}" (${server.serverId})`,
+    });
+    res.json({ message: "Server deleted" });
+  });
+
+  app.post(api.vpnServers.regenerateKey.path, async (req, res) => {
+    if (!req.isAuthenticated() || req.user?.role !== 'admin') return res.sendStatus(403);
+    const id = parseInt(req.params.id);
+    const server = await storage.getVpnServer(id);
+    if (!server) return res.status(404).json({ message: "Server not found" });
+    const updated = await storage.updateVpnServer(id, { apiKey: generateApiKey() });
+    await storage.createAuditLog({
+      userId: req.user.id,
+      action: "REGENERATE_VPN_SERVER_KEY",
+      entityType: "vpn_server",
+      entityId: String(id),
+      details: `Regenerated API key for VPN server "${server.name}" (${server.serverId})`,
+    });
+    res.json(updated);
+  });
+
   // Telemetry ingestion endpoint for OpenVPN agent
   app.post(api.telemetry.ingest.path, async (req, res, next) => {
     try {
-      const apiKey = process.env.TELEMETRY_API_KEY;
-      if (apiKey) {
-        const auth = req.header("authorization") || "";
-        const expected = `Bearer ${apiKey}`;
-        if (auth !== expected) {
-          return res.status(401).json({ message: "Unauthorized" });
+      // Auth: check per-server key first, then fall back to global key
+      const auth = req.header("authorization") || "";
+      const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+      let authenticated = false;
+
+      // Try per-server API key authentication
+      if (token && req.body?.server_id) {
+        const server = await storage.getVpnServerByServerId(req.body.server_id);
+        if (server && server.isActive && server.apiKey === token) {
+          authenticated = true;
         }
+      }
+
+      // Fall back to global TELEMETRY_API_KEY
+      if (!authenticated) {
+        const globalKey = process.env.TELEMETRY_API_KEY;
+        if (globalKey && token === globalKey) {
+          authenticated = true;
+        }
+      }
+
+      if (!authenticated) {
+        return res.status(401).json({ message: "Unauthorized" });
       }
 
       const payload = api.telemetry.ingest.input.parse(req.body);
 
       for (const event of payload.events) {
+        // Idempotency check: if event_id already exists, skip
+        if (event.event_id) {
+          const existingSession = await storage.getSessionByEventId(event.event_id);
+          if (existingSession) {
+            console.log(`Skipping duplicate event ${event.event_id}`);
+            continue;
+          }
+        }
+
         const serverId = payload.server_id;
         const commonName = event.common_name;
         let vpnUser = await storage.getVpnUserByCommonNameAndServer(
@@ -180,6 +281,7 @@ export async function registerRoutes(
             virtualIp: event.virtual_ip || null,
             status: "active",
             serverId,
+            eventId: event.event_id,
           });
 
           await storage.updateVpnUser(vpnUser.id, {
@@ -188,6 +290,10 @@ export async function registerRoutes(
           });
         } else if (event.type === "SESSION_DISCONNECTED") {
           const activeSessions = await storage.getActiveSessions();
+          // We can optimize this by looking up by eventId if we had the CONNECTED eventId,
+          // but DISCONNECTED doesn't link back to the CONNECTED eventId in the payload directly
+          // other than by user. So we rely on user mapping.
+
           const userActive = activeSessions
             .filter((s) => s.vpnUser.id === vpnUser.id)
             .sort(
@@ -232,7 +338,7 @@ async function seedDatabase() {
       email: "admin@example.com",
       fullName: "System Admin"
     });
-    
+
     const v1 = await storage.createVpnUser({ commonName: "jdoe@company.com", type: "Employee", fullName: "John Doe", email: "jdoe@company.com" });
     const v2 = await storage.createVpnUser({ commonName: "vendor-x", type: "Vendor", fullName: "External Vendor" });
 

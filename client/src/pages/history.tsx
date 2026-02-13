@@ -17,7 +17,7 @@ function formatDuration(start: string, end?: string) {
   const diff = new Date(end).getTime() - new Date(start).getTime();
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(minutes / 60);
-  
+
   if (hours > 0) return `${hours}h ${minutes % 60}m`;
   return `${minutes}m`;
 }
@@ -27,11 +27,6 @@ export default function HistoryPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Session History</h1>
-        <p className="text-muted-foreground">Historical record of all past VPN connections.</p>
-      </div>
-
       <Card>
         <CardHeader>
           <CardTitle>Past Connections</CardTitle>

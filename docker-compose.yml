@@ -10,8 +10,8 @@ services:
       POSTGRES_PASSWORD: secure_telemetry_password
     volumes:
       - db_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    # ports:
+    #   - "5432:5432"
 
   app:
     build: .
@@ -29,4 +29,3 @@ services:
 
 volumes:
   db_data:
-

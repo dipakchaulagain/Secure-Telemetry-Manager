@@ -13,13 +13,13 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuLabel, 
-  DropdownMenuSeparator, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
@@ -46,7 +46,7 @@ export function Layout({ children }: LayoutProps) {
     { name: "Audit Logs", href: "/audit", icon: History },
   ];
 
-  const allNav = user?.role === 'admin' 
+  const allNav = user?.role === 'admin'
     ? [...navigation, ...adminNavigation]
     : navigation;
 
@@ -127,15 +127,15 @@ export function Layout({ children }: LayoutProps) {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto h-[calc(100vh-64px)] md:h-screen p-4 md:p-8 bg-muted/20">
-        <div className="max-w-7xl mx-auto space-y-6">
-           {children}
+      <main className="flex-1 overflow-y-auto h-[calc(100vh-64px)] md:h-screen p-4 md:p-6 bg-muted/20">
+        <div className="space-y-6">
+          {children}
         </div>
       </main>
 
       {/* Mobile Menu Backdrop */}
       {mobileMenuOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm"
           onClick={() => setMobileMenuOpen(false)}
         />

@@ -2,8 +2,10 @@ import { z } from 'zod';
 import {
   insertUserSchema,
   insertVpnUserSchema,
+  insertVpnServerSchema,
   users,
   vpnUsers,
+  vpnServers,
   sessions,
   auditLogs,
 } from './schema';
@@ -176,6 +178,42 @@ export const api = {
     },
   },
 
+  // VPN Server Management
+  vpnServers: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/vpn-servers' as const,
+      responses: {
+        200: z.array(z.custom<typeof vpnServers.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/vpn-servers' as const,
+      input: insertVpnServerSchema,
+      responses: {
+        201: z.custom<typeof vpnServers.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/vpn-servers/:id' as const,
+      responses: {
+        200: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
+    regenerateKey: {
+      method: 'POST' as const,
+      path: '/api/vpn-servers/:id/regenerate-key' as const,
+      responses: {
+        200: z.custom<typeof vpnServers.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+
   // Telemetry ingestion (OpenVPN agent)
   telemetry: {
     ingest: {
@@ -205,6 +243,11 @@ export const api = {
     },
   },
 };
+
+// Helper types for frontend
+export type CreateUserRequest = z.infer<typeof insertUserSchema>;
+export type UpdateUserRequest = Partial<CreateUserRequest>;
+export type CreateVpnServerRequest = z.infer<typeof insertVpnServerSchema>;
 
 export function buildUrl(path: string, params?: Record<string, string | number>): string {
   let url = path;

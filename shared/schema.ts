@@ -43,7 +43,18 @@ export const sessions = pgTable("sessions", {
   remoteIp: text("remote_ip").notNull(),
   virtualIp: text("virtual_ip"),
   status: text("status", { enum: ["active", "closed"] }).notNull().default("active"),
-   serverId: text("server_id"),
+  serverId: text("server_id"),
+  eventId: text("event_id").unique(),
+});
+
+export const vpnServers = pgTable("vpn_servers", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  serverId: text("server_id").notNull().unique(),
+  apiKey: text("api_key").notNull(),
+  description: text("description"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const auditLogs = pgTable("audit_logs", {
@@ -81,6 +92,7 @@ export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export const insertVpnUserSchema = createInsertSchema(vpnUsers).omit({ id: true, createdAt: true, totalBytesReceived: true, totalBytesSent: true, lastConnected: true });
 export const insertSessionSchema = createInsertSchema(sessions).omit({ id: true, startTime: true, endTime: true });
+export const insertVpnServerSchema = createInsertSchema(vpnServers).omit({ id: true, createdAt: true, serverId: true, apiKey: true });
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, timestamp: true });
 
 // === TYPES ===
@@ -89,6 +101,8 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type VpnUser = typeof vpnUsers.$inferSelect;
 export type InsertVpnUser = z.infer<typeof insertVpnUserSchema>;
+export type VpnServer = typeof vpnServers.$inferSelect;
+export type InsertVpnServer = z.infer<typeof insertVpnServerSchema>;
 export type Session = typeof sessions.$inferSelect;
 export type InsertSession = z.infer<typeof insertSessionSchema>;
 export type AuditLog = typeof auditLogs.$inferSelect;

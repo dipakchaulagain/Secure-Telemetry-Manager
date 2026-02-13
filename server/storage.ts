@@ -2,12 +2,15 @@ import { db, pool } from "./db";
 import {
   users,
   vpnUsers,
+  vpnServers,
   sessions,
   auditLogs,
   type User,
   type InsertUser,
   type VpnUser,
   type InsertVpnUser,
+  type VpnServer,
+  type InsertVpnServer,
   type Session,
   type InsertSession,
   type AuditLog,
@@ -41,6 +44,13 @@ export interface IStorage {
   endSession(id: number): Promise<void>;
   createAuditLog(log: { userId?: number, action: string, entityType: string, entityId?: string, details?: string }): Promise<AuditLog>;
   getAuditLogs(): Promise<(AuditLog & { user: User | null })[]>;
+  getVpnServers(): Promise<VpnServer[]>;
+  getVpnServer(id: number): Promise<VpnServer | undefined>;
+  getVpnServerByServerId(serverId: string): Promise<VpnServer | undefined>;
+  getSessionByEventId(eventId: string): Promise<Session | undefined>;
+  createVpnServer(server: InsertVpnServer & { serverId: string; apiKey: string }): Promise<VpnServer>;
+  updateVpnServer(id: number, updates: Partial<VpnServer>): Promise<VpnServer>;
+  deleteVpnServer(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -144,6 +154,11 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  async getSessionByEventId(eventId: string): Promise<Session | undefined> {
+    const [session] = await db.select().from(sessions).where(eq(sessions.eventId, eventId));
+    return session;
+  }
+
   async createSession(session: InsertSession): Promise<Session> {
     const [newSession] = await db.insert(sessions).values(session).returning();
     return newSession;
@@ -165,6 +180,34 @@ export class DatabaseStorage implements IStorage {
       with: { user: true },
       orderBy: desc(auditLogs.timestamp),
     });
+  }
+
+  async getVpnServers(): Promise<VpnServer[]> {
+    return await db.select().from(vpnServers).orderBy(desc(vpnServers.createdAt));
+  }
+
+  async getVpnServer(id: number): Promise<VpnServer | undefined> {
+    const [server] = await db.select().from(vpnServers).where(eq(vpnServers.id, id));
+    return server;
+  }
+
+  async getVpnServerByServerId(serverId: string): Promise<VpnServer | undefined> {
+    const [server] = await db.select().from(vpnServers).where(eq(vpnServers.serverId, serverId));
+    return server;
+  }
+
+  async createVpnServer(server: InsertVpnServer & { serverId: string; apiKey: string }): Promise<VpnServer> {
+    const [newServer] = await db.insert(vpnServers).values(server).returning();
+    return newServer;
+  }
+
+  async updateVpnServer(id: number, updates: Partial<VpnServer>): Promise<VpnServer> {
+    const [server] = await db.update(vpnServers).set(updates).where(eq(vpnServers.id, id)).returning();
+    return server;
+  }
+
+  async deleteVpnServer(id: number): Promise<void> {
+    await db.delete(vpnServers).where(eq(vpnServers.id, id));
   }
 }
 

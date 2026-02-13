@@ -4,6 +4,7 @@ import {
   buildUrl,
   type CreateUserRequest,
   type UpdateUserRequest,
+  type CreateVpnServerRequest,
 } from "@shared/routes";
 import { toast } from "@/hooks/use-toast";
 
@@ -53,9 +54,9 @@ export function useKillSession() {
   return useMutation({
     mutationFn: async (id: number) => {
       const url = buildUrl(api.sessions.kill.path, { id });
-      const res = await fetch(url, { 
+      const res = await fetch(url, {
         method: api.sessions.kill.method,
-        credentials: "include" 
+        credentials: "include"
       });
       if (!res.ok) throw new Error("Failed to kill session");
       return res.json();
@@ -192,6 +193,99 @@ export function useAuditLogs() {
       const res = await fetch(api.audit.list.path, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch audit logs");
       return api.audit.list.responses[200].parse(await res.json());
+    },
+  });
+}
+
+// ==========================================
+// VPN SERVERS
+// ==========================================
+export function useVpnServers() {
+  return useQuery({
+    queryKey: [api.vpnServers.list.path],
+    queryFn: async () => {
+      const res = await fetch(api.vpnServers.list.path, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch VPN servers");
+      return api.vpnServers.list.responses[200].parse(await res.json());
+    },
+  });
+}
+
+export function useCreateVpnServer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: CreateVpnServerRequest) => {
+      const res = await fetch(api.vpnServers.create.path, {
+        method: api.vpnServers.create.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to create VPN server");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.vpnServers.list.path] });
+      toast({ title: "VPN server registered successfully" });
+    },
+    onError: (err) => {
+      toast({
+        title: "Failed to register VPN server",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
+export function useDeleteVpnServer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const url = buildUrl(api.vpnServers.delete.path, { id });
+      const res = await fetch(url, {
+        method: api.vpnServers.delete.method,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete VPN server");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.vpnServers.list.path] });
+      toast({ title: "VPN server removed" });
+    },
+    onError: (err) => {
+      toast({
+        title: "Failed to remove VPN server",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
+export function useRegenerateVpnServerKey() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const url = buildUrl(api.vpnServers.regenerateKey.path, { id });
+      const res = await fetch(url, {
+        method: api.vpnServers.regenerateKey.method,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to regenerate API key");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.vpnServers.list.path] });
+      toast({ title: "API key regenerated" });
+    },
+    onError: (err) => {
+      toast({
+        title: "Failed to regenerate API key",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "destructive",
+      });
     },
   });
 }
