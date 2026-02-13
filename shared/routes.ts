@@ -225,13 +225,33 @@ export const api = {
         events: z.array(
           z.object({
             event_id: z.string(),
-            seq: z.number(),
-            type: z.enum(['SESSION_CONNECTED', 'SESSION_DISCONNECTED']),
-            common_name: z.string(),
+            seq: z.number().optional(), // seq might not be in all events
+            type: z.enum(['SESSION_CONNECTED', 'SESSION_DISCONNECTED', 'USERS_UPDATE', 'CCD_INFO']),
+            common_name: z.string().optional(), // Optional for bulk USERS_UPDATE
+            // Session fields
             real_ip: z.string().nullable().optional(),
             real_port: z.string().nullable().optional(),
             virtual_ip: z.string().nullable().optional(),
-            event_time_vpn: z.string(), // ISO timestamp from VPN host
+
+            // USERS_UPDATE fields
+            status: z.enum(['VALID', 'REVOKED', 'EXPIRED']).optional(),
+            action: z.enum(['INITIAL', 'ADDED', 'REVOKED', 'EXPIRED']).optional(),
+            source: z.string().optional(),
+            expires_at_index: z.string().optional(),
+            revoked_at_index: z.string().optional(),
+            users: z.array(z.object({
+              common_name: z.string(),
+              status: z.enum(['VALID', 'REVOKED', 'EXPIRED']),
+              expires_at_index: z.string().optional(),
+            })).optional(),
+
+            // CCD_INFO fields
+            ccd_path: z.string().optional(),
+            ccd_content_b64: z.string().optional(),
+
+            // Timestamps (support both legacy and new)
+            event_time_vpn: z.string().optional(),
+            event_time_agent: z.string().optional(),
           }),
         ),
       }),

@@ -1,10 +1,11 @@
 import type { Express } from "express";
 import { type Server } from "http";
-import { setupAuth } from "./auth";
+import { setupAuth, hashPassword, comparePasswords } from "./auth";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import crypto from "crypto";
+import { User } from "@shared/schema";
 
 function generateServerId(): string {
   return `vpn-${crypto.randomBytes(6).toString("hex")}`;
@@ -19,6 +20,41 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   setupAuth(app);
+
+  // ==========================================
+  // CHANGE PASSWORD (forced on first login)
+  // ==========================================
+  app.post("/api/change-password", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "Current and new password are required" });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: "New password must be at least 8 characters" });
+    }
+    const user = req.user as User;
+    const valid = await comparePasswords(currentPassword, user.password);
+    if (!valid) {
+      return res.status(400).json({ message: "Current password is incorrect" });
+    }
+    const hashed = await hashPassword(newPassword);
+    await storage.updateUser(user.id, { password: hashed, mustChangePassword: false } as any);
+    await storage.createAuditLog({
+      userId: user.id,
+      action: "CHANGE_PASSWORD",
+      entityType: "user",
+      entityId: String(user.id),
+      details: "Password changed (forced on first login)"
+    });
+    // Re-fetch user after update to get fresh data
+    const updatedUser = await storage.getUser(user.id);
+    if (updatedUser) {
+      const { password: _, ...userWithoutPassword } = updatedUser;
+      return res.json(userWithoutPassword);
+    }
+    res.json({ message: "Password changed successfully" });
+  });
 
   app.get(api.users.list.path, async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
@@ -132,12 +168,21 @@ export async function registerRoutes(
   app.get(api.stats.get.path, async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const active = await storage.getActiveSessions();
-    const vpnUsers = await storage.getVpnUsers();
-    const totalBytes = active.reduce((acc, s) => acc + (s.bytesReceived || 0) + (s.bytesSent || 0), 0);
+    const allVpnUsers = await storage.getVpnUsers();
+    // Aggregate traffic from ALL VPN users (cumulative)
+    const totalBytesSent = allVpnUsers.reduce((acc, u) => acc + (u.totalBytesSent || 0), 0);
+    const totalBytesReceived = allVpnUsers.reduce((acc, u) => acc + (u.totalBytesReceived || 0), 0);
+    // User status breakdown
+    const validCount = allVpnUsers.filter(u => u.accountStatus === "VALID").length;
+    const expiredCount = allVpnUsers.filter(u => u.accountStatus === "EXPIRED").length;
+    const revokedCount = allVpnUsers.filter(u => u.accountStatus === "REVOKED").length;
     res.json({
       activeSessions: active.length,
-      totalVpnUsers: vpnUsers.length,
-      bytesTransferred: totalBytes,
+      totalVpnUsers: allVpnUsers.length,
+      totalBytesSent,
+      totalBytesReceived,
+      bytesTransferred: totalBytesSent + totalBytesReceived,
+      vpnUsersByStatus: { valid: validCount, expired: expiredCount, revoked: revokedCount },
       serverStatus: "Online"
     });
   });
@@ -257,12 +302,16 @@ export async function registerRoutes(
 
         const serverId = payload.server_id;
         const commonName = event.common_name;
-        let vpnUser = await storage.getVpnUserByCommonNameAndServer(
+        let vpnUser = (serverId && commonName) ? await storage.getVpnUserByCommonNameAndServer(
           serverId,
           commonName,
-        );
+        ) : undefined;
+        // Logic below handles creation if vpnUser is undefined AND commonName is present
 
-        if (!vpnUser) {
+        const eventDateStr = event.event_time_agent || event.event_time_vpn;
+        const eventTime = eventDateStr ? new Date(eventDateStr) : new Date();
+
+        if (commonName && !vpnUser) {
           vpnUser = await storage.createVpnUser({
             commonName,
             type: "Others",
@@ -271,9 +320,12 @@ export async function registerRoutes(
           });
         }
 
-        const eventTime = new Date(event.event_time_vpn);
-
         if (event.type === "SESSION_CONNECTED") {
+          // Ensure we have a user for sessions
+          if (!vpnUser) {
+            console.error("Missing VPN user for SESSION_CONNECTED", event);
+            continue;
+          }
           await storage.createSession({
             vpnUserId: vpnUser.id,
             startTime: eventTime,
@@ -289,13 +341,15 @@ export async function registerRoutes(
             lastConnected: eventTime,
           });
         } else if (event.type === "SESSION_DISCONNECTED") {
+          if (!commonName) continue;
+
           const activeSessions = await storage.getActiveSessions();
           // We can optimize this by looking up by eventId if we had the CONNECTED eventId,
           // but DISCONNECTED doesn't link back to the CONNECTED eventId in the payload directly
           // other than by user. So we rely on user mapping.
 
           const userActive = activeSessions
-            .filter((s) => s.vpnUser.id === vpnUser.id)
+            .filter((s) => s.vpnUser.id === vpnUser?.id)
             .sort(
               (a, b) =>
                 new Date(b.startTime).getTime() -
@@ -307,9 +361,83 @@ export async function registerRoutes(
             await storage.endSession(latest.id);
           }
 
-          await storage.updateVpnUser(vpnUser.id, {
-            status: "offline",
-          });
+          if (vpnUser) {
+            await storage.updateVpnUser(vpnUser.id, {
+              status: "offline",
+            });
+          }
+        } else if (event.type === "USERS_UPDATE") {
+          // Handle Bulk Initial Update
+          if (event.action === "INITIAL" && event.users) {
+            for (const user of event.users) {
+              let u = await storage.getVpnUserByCommonNameAndServer(serverId, user.common_name);
+              const data = {
+                accountStatus: user.status,
+                expirationDate: user.expires_at_index ? parseOpenVpnDate(user.expires_at_index) : undefined,
+                serverId, // ensure serverId is set
+              };
+
+              if (!u) {
+                await storage.createVpnUser({
+                  commonName: user.common_name,
+                  type: "Others",
+                  status: "offline",
+                  ...data,
+                });
+              } else {
+                await storage.updateVpnUser(u.id, data);
+              }
+            }
+          }
+          // Handle Single User Update
+          else if (commonName) {
+            // "expires_at_index": "290124060904Z" -> YYMMDDHHmmssZ
+            const expirationDate = event.expires_at_index ? parseOpenVpnDate(event.expires_at_index) : undefined;
+            const revocationDate = event.revoked_at_index ? parseOpenVpnDate(event.revoked_at_index) : undefined;
+
+            // vpnUser might be null if we haven't seen them before, create if needed
+            if (!vpnUser) {
+              vpnUser = await storage.createVpnUser({
+                commonName,
+                type: "Others",
+                status: "offline",
+                serverId,
+              });
+            }
+
+            await storage.updateVpnUser(vpnUser.id, {
+              accountStatus: event.status || "VALID", // Default to valid if not specified, though usually it is
+              expirationDate,
+              revocationDate,
+            });
+          }
+        } else if (event.type === "CCD_INFO") {
+          if (commonName && event.ccd_content_b64) {
+            if (!vpnUser) {
+              vpnUser = await storage.createVpnUser({
+                commonName,
+                type: "Others",
+                status: "offline",
+                serverId,
+              });
+            }
+
+            const decoded = Buffer.from(event.ccd_content_b64, 'base64').toString('utf-8');
+            // Parse ifconfig-push
+            // Format: ifconfig-push 10.8.0.125 255.255.254.0
+            const ifconfigMatch = decoded.match(/ifconfig-push\s+([\d.]+)\s+([\d.]+)/);
+            let ccdStaticIp = ifconfigMatch ? ifconfigMatch[1] : null;
+
+            // Parse routes
+            // Format: push "route 192.168.12.0 255.255.255.0"
+            const routeMatches = [...decoded.matchAll(/push\s+"route\s+([\d.]+)\s+([\d.]+)"/g)];
+            const routes = routeMatches.map(m => `${m[1]}/${netmaskToCidr(m[2])}`).join(",");
+
+            await storage.updateVpnUser(vpnUser.id, {
+              ccdStaticIp: ccdStaticIp || undefined,
+              ccdRoutes: routes || undefined,
+            });
+          }
         }
       }
 
@@ -330,19 +458,40 @@ export async function registerRoutes(
 async function seedDatabase() {
   const existingUsers = await storage.getUsers();
   if (existingUsers.length === 0) {
+    const hashedPassword = await hashPassword("password123");
     await storage.createUser({
       username: "admin",
-      password: "password123",
+      password: hashedPassword,
       role: "admin",
       isActive: true,
+      mustChangePassword: true,
       email: "admin@example.com",
       fullName: "System Admin"
     });
-
-    const v1 = await storage.createVpnUser({ commonName: "jdoe@company.com", type: "Employee", fullName: "John Doe", email: "jdoe@company.com" });
-    const v2 = await storage.createVpnUser({ commonName: "vendor-x", type: "Vendor", fullName: "External Vendor" });
-
-    await storage.createSession({ vpnUserId: v1.id, remoteIp: "1.1.1.1", virtualIp: "10.8.0.2", status: "active" });
-    await storage.createSession({ vpnUserId: v2.id, remoteIp: "2.2.2.2", virtualIp: "10.8.0.3", status: "closed", endTime: new Date() });
   }
+}
+
+function parseOpenVpnDate(dateStr: string): Date | undefined {
+  // Format: YYMMDDHHmmssZ e.g. 290124060904Z
+  if (!dateStr || dateStr.length < 12) return undefined;
+  // allow for explicit ISO strings just in case
+  if (dateStr.includes('-')) return new Date(dateStr);
+
+  const year = parseInt(dateStr.substring(0, 2));
+  const month = parseInt(dateStr.substring(2, 4)) - 1;
+  const day = parseInt(dateStr.substring(4, 6));
+  const hour = parseInt(dateStr.substring(6, 8));
+  const minute = parseInt(dateStr.substring(8, 10));
+  const second = parseInt(dateStr.substring(10, 12));
+
+  // Assume 20xx for year
+  const fullYear = 2000 + year;
+  return new Date(Date.UTC(fullYear, month, day, hour, minute, second));
+}
+
+function netmaskToCidr(netmask: string): number {
+  return netmask.split('.').map(Number)
+    .map(part => (part >>> 0).toString(2))
+    .join('')
+    .split('1').length - 1;
 }

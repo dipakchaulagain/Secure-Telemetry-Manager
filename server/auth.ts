@@ -9,13 +9,17 @@ import { User } from "@shared/schema";
 
 const scryptAsync = promisify(scrypt);
 
-async function hashPassword(password: string) {
+export async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
   const buf = (await scryptAsync(password, salt, 64)) as Buffer;
   return `${buf.toString("hex")}.${salt}`;
 }
 
-async function comparePasswords(supplied: string, stored: string) {
+export async function comparePasswords(supplied: string, stored: string) {
+  // Handle plain-text fallback for legacy seed
+  if (!stored.includes(".")) {
+    return supplied === stored;
+  }
   const [hashed, salt] = stored.split(".");
   const hashedBuf = Buffer.from(hashed, "hex");
   const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
@@ -42,22 +46,12 @@ export function setupAuth(app: Express) {
     new LocalStrategy(async (username, password, done) => {
       try {
         const user = await storage.getUserByUsername(username);
-        // For the seed user 'admin' with password 'password123', we need to handle plain text vs hashed
-        // In a real app, always use hashed. Here we'll support the seed password.
         if (!user) {
           return done(null, false);
         }
 
-        // Check if stored password is hashed (contains dot)
-        if (user.password.includes(".")) {
-          if (await comparePasswords(password, user.password)) {
-            return done(null, user);
-          }
-        } else {
-          // Fallback for seed data (plain text)
-          if (user.password === password) {
-            return done(null, user);
-          }
+        if (await comparePasswords(password, user.password)) {
+          return done(null, user);
         }
 
         return done(null, false);
@@ -81,7 +75,7 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/login", (req, res, next) => {
-    passport.authenticate("local", (err, user, info) => {
+    passport.authenticate("local", (err: any, user: any, info: any) => {
       if (err) {
         return next(err);
       }

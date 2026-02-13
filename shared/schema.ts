@@ -13,6 +13,7 @@ export const users = pgTable("users", {
   fullName: text("full_name"),
   role: text("role", { enum: ["admin", "operator", "viewer"] }).notNull().default("viewer"),
   isActive: boolean("is_active").notNull().default(true),
+  mustChangePassword: boolean("must_change_password").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -29,6 +30,9 @@ export const vpnUsers = pgTable("vpn_users", {
   lastConnected: timestamp("last_connected"),
   ccdStaticIp: text("ccd_static_ip"),
   ccdRoutes: text("ccd_routes"),
+  accountStatus: text("account_status").default("VALID"),
+  expirationDate: timestamp("expiration_date"),
+  revocationDate: timestamp("revocation_date"),
   serverId: text("server_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -90,7 +94,7 @@ export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
 // === ZOD SCHEMAS ===
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
-export const insertVpnUserSchema = createInsertSchema(vpnUsers).omit({ id: true, createdAt: true, totalBytesReceived: true, totalBytesSent: true, lastConnected: true });
+export const insertVpnUserSchema = createInsertSchema(vpnUsers).omit({ id: true, createdAt: true, totalBytesReceived: true, totalBytesSent: true, lastConnected: true, accountStatus: true, expirationDate: true, revocationDate: true });
 export const insertSessionSchema = createInsertSchema(sessions).omit({ id: true, startTime: true, endTime: true });
 export const insertVpnServerSchema = createInsertSchema(vpnServers).omit({ id: true, createdAt: true, serverId: true, apiKey: true });
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, timestamp: true });

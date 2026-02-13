@@ -8,9 +8,11 @@ import { Layout } from "@/components/layout";
 import { Loader2 } from "lucide-react";
 
 import LoginPage from "@/pages/login";
+import ChangePasswordPage from "@/pages/change-password";
 import DashboardPage from "@/pages/dashboard";
 import ActiveSessionsPage from "@/pages/active-sessions";
 import VpnUsersPage from "@/pages/vpn-users";
+import VpnUserDetailsPage from "@/pages/vpn-user-details";
 import PortalUsersPage from "@/pages/portal-users";
 import AuditLogsPage from "@/pages/audit-logs";
 import AccountingPage from "@/pages/accounting";
@@ -35,6 +37,12 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
     return null;
   }
 
+  // Force password change redirect
+  if (user.mustChangePassword) {
+    setLocation("/change-password");
+    return null;
+  }
+
   return (
     <Layout>
       <Component />
@@ -46,13 +54,17 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
-      
+      <Route path="/change-password" component={ChangePasswordPage} />
+
       {/* Protected Routes */}
       <Route path="/">
         <ProtectedRoute component={DashboardPage} />
       </Route>
       <Route path="/sessions">
         <ProtectedRoute component={ActiveSessionsPage} />
+      </Route>
+      <Route path="/vpn-users/:id">
+        <ProtectedRoute component={VpnUserDetailsPage} />
       </Route>
       <Route path="/vpn-users">
         <ProtectedRoute component={VpnUsersPage} />

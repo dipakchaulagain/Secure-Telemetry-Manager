@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useActiveSessions } from "@/hooks/use-data";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -13,8 +14,31 @@ function formatBytes(bytes: number) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+function calculateDuration(startTime: string) {
+  const start = new Date(startTime).getTime();
+  const now = new Date().getTime();
+  const diff = now - start;
+
+  if (diff < 0) return "0m";
+
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) return `${days}d ${hours % 24}h`;
+  if (hours > 0) return `${hours}h ${minutes % 60}m`;
+  return `${minutes}m`;
+}
+
 export default function ActiveSessionsPage() {
   const { data: sessions, isLoading, refetch, isRefetching } = useActiveSessions();
+  // Force re-render every minute to update duration
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setTick((t: number) => t + 1), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -47,13 +71,14 @@ export default function ActiveSessionsPage() {
                   <TableHead>Remote IP</TableHead>
                   <TableHead>Virtual IP</TableHead>
                   <TableHead>Connected At</TableHead>
+                  <TableHead>Duration</TableHead>
                   <TableHead className="text-right">Sent / Received</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="h-24 text-center">
+                    <TableCell colSpan={6} className="h-24 text-center">
                       <div className="flex justify-center items-center">
                         <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
                         Loading sessions...
@@ -62,7 +87,7 @@ export default function ActiveSessionsPage() {
                   </TableRow>
                 ) : sessions?.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                       No active sessions found.
                     </TableCell>
                   </TableRow>
@@ -78,6 +103,9 @@ export default function ActiveSessionsPage() {
                       <TableCell className="font-mono text-xs">{session.remoteIp}</TableCell>
                       <TableCell className="font-mono text-xs">{session.virtualIp || "N/A"}</TableCell>
                       <TableCell>{format(new Date(session.startTime), "MMM d, HH:mm:ss")}</TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {calculateDuration(session.startTime)}
+                      </TableCell>
                       <TableCell className="text-right font-mono text-xs">
                         <span className="text-green-600">↑{formatBytes(session.bytesSent)}</span>
                         <span className="mx-1 text-muted-foreground">/</span>

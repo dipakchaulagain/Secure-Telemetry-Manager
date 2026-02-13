@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type LoginRequest } from "@shared/routes";
+import { api } from "@shared/routes";
 import { useLocation } from "wouter";
+
+export type LoginRequest = { username: string; password: string };
 
 export function useAuth() {
   const queryClient = useQueryClient();
@@ -12,7 +14,7 @@ export function useAuth() {
       const res = await fetch(api.auth.me.path, { credentials: "include" });
       if (res.status === 401) return null;
       if (!res.ok) throw new Error("Failed to fetch user");
-      return api.auth.me.responses[200].parse(await res.json());
+      return res.json();
     },
     retry: false,
     staleTime: Infinity, // Don't refetch automatically, let mutations handle it
@@ -26,27 +28,32 @@ export function useAuth() {
         body: JSON.stringify(credentials),
         credentials: "include",
       });
-      
+
       if (!res.ok) {
         if (res.status === 401) {
           throw new Error("Invalid username or password");
         }
         throw new Error("Login failed");
       }
-      
-      return api.auth.login.responses[200].parse(await res.json());
+
+      return res.json();
     },
     onSuccess: (data) => {
       queryClient.setQueryData([api.auth.me.path], data);
-      setLocation("/");
+      // Redirect to change-password if required, otherwise dashboard
+      if (data.mustChangePassword) {
+        setLocation("/change-password");
+      } else {
+        setLocation("/");
+      }
     },
   });
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      await fetch(api.auth.logout.path, { 
+      await fetch(api.auth.logout.path, {
         method: api.auth.logout.method,
-        credentials: "include" 
+        credentials: "include"
       });
     },
     onSuccess: () => {
@@ -65,3 +72,4 @@ export function useAuth() {
     logout: logoutMutation.mutate,
   };
 }
+

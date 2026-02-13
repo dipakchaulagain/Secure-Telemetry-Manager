@@ -18,6 +18,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
+# Install tzdata for timezone support
+RUN apk add --no-cache tzdata
+
 # Copy built artifacts and required runtime files
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/shared ./shared

@@ -8,6 +8,7 @@ services:
       POSTGRES_DB: secure_telemetry
       POSTGRES_USER: secure_telemetry
       POSTGRES_PASSWORD: secure_telemetry_password
+      TZ: Asia/Kathmandu
     volumes:
       - db_data:/var/lib/postgresql/data
     # ports:
@@ -24,6 +25,7 @@ services:
       DATABASE_URL: postgres://secure_telemetry:secure_telemetry_password@db:5432/secure_telemetry
       SESSION_SECRET: change-me-in-production
       TELEMETRY_API_KEY: change-me-telemetry-key
+      TZ: Asia/Kathmandu
     ports:
       - "5000:5000"
 
