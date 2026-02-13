@@ -306,24 +306,13 @@ export async function registerRoutes(
           serverId,
           commonName,
         ) : undefined;
-        // Logic below handles creation if vpnUser is undefined AND commonName is present
 
         const eventDateStr = event.event_time_agent || event.event_time_vpn;
         const eventTime = eventDateStr ? new Date(eventDateStr) : new Date();
 
-        if (commonName && !vpnUser) {
-          vpnUser = await storage.createVpnUser({
-            commonName,
-            type: "Others",
-            status: "offline",
-            serverId,
-          });
-        }
-
         if (event.type === "SESSION_CONNECTED") {
-          // Ensure we have a user for sessions
           if (!vpnUser) {
-            console.error("Missing VPN user for SESSION_CONNECTED", event);
+            console.warn(`[Telemetry] Skipping SESSION_CONNECTED: VPN user ${commonName} from ${serverId} not found.`);
             continue;
           }
           await storage.createSession({
@@ -342,12 +331,12 @@ export async function registerRoutes(
           });
         } else if (event.type === "SESSION_DISCONNECTED") {
           if (!commonName) continue;
+          if (!vpnUser) {
+            console.warn(`[Telemetry] Skipping SESSION_DISCONNECTED: VPN user ${commonName} from ${serverId} not found.`);
+            continue;
+          }
 
           const activeSessions = await storage.getActiveSessions();
-          // We can optimize this by looking up by eventId if we had the CONNECTED eventId,
-          // but DISCONNECTED doesn't link back to the CONNECTED eventId in the payload directly
-          // other than by user. So we rely on user mapping.
-
           const userActive = activeSessions
             .filter((s) => s.vpnUser.id === vpnUser?.id)
             .sort(
@@ -361,20 +350,18 @@ export async function registerRoutes(
             await storage.endSession(latest.id);
           }
 
-          if (vpnUser) {
-            await storage.updateVpnUser(vpnUser.id, {
-              status: "offline",
-            });
-          }
+          await storage.updateVpnUser(vpnUser.id, {
+            status: "offline",
+          });
         } else if (event.type === "USERS_UPDATE") {
-          // Handle Bulk Initial Update
+          // Handle Bulk Initial Update (Creation allowed here)
           if (event.action === "INITIAL" && event.users) {
             for (const user of event.users) {
               let u = await storage.getVpnUserByCommonNameAndServer(serverId, user.common_name);
               const data = {
                 accountStatus: user.status,
                 expirationDate: user.expires_at_index ? parseOpenVpnDate(user.expires_at_index) : undefined,
-                serverId, // ensure serverId is set
+                serverId,
               };
 
               if (!u) {
@@ -391,22 +378,26 @@ export async function registerRoutes(
           }
           // Handle Single User Update
           else if (commonName) {
-            // "expires_at_index": "290124060904Z" -> YYMMDDHHmmssZ
             const expirationDate = event.expires_at_index ? parseOpenVpnDate(event.expires_at_index) : undefined;
             const revocationDate = event.revoked_at_index ? parseOpenVpnDate(event.revoked_at_index) : undefined;
 
-            // vpnUser might be null if we haven't seen them before, create if needed
+            // vpnUser might be null, create ONLY if action is ADDED
             if (!vpnUser) {
-              vpnUser = await storage.createVpnUser({
-                commonName,
-                type: "Others",
-                status: "offline",
-                serverId,
-              });
+              if (event.action === "ADDED" || event.action === "INITIAL") {
+                vpnUser = await storage.createVpnUser({
+                  commonName,
+                  type: "Others",
+                  status: "offline",
+                  serverId,
+                });
+              } else {
+                console.warn(`[Telemetry] Skipping USERS_UPDATE (${event.action}): VPN user ${commonName} from ${serverId} not found.`);
+                continue;
+              }
             }
 
             await storage.updateVpnUser(vpnUser.id, {
-              accountStatus: event.status || "VALID", // Default to valid if not specified, though usually it is
+              accountStatus: event.status || "VALID",
               expirationDate,
               revocationDate,
             });
@@ -414,22 +405,14 @@ export async function registerRoutes(
         } else if (event.type === "CCD_INFO") {
           if (commonName && event.ccd_content_b64) {
             if (!vpnUser) {
-              vpnUser = await storage.createVpnUser({
-                commonName,
-                type: "Others",
-                status: "offline",
-                serverId,
-              });
+              console.warn(`[Telemetry] Skipping CCD_INFO: VPN user ${commonName} from ${serverId} not found.`);
+              continue;
             }
 
             const decoded = Buffer.from(event.ccd_content_b64, 'base64').toString('utf-8');
-            // Parse ifconfig-push
-            // Format: ifconfig-push 10.8.0.125 255.255.254.0
             const ifconfigMatch = decoded.match(/ifconfig-push\s+([\d.]+)\s+([\d.]+)/);
             let ccdStaticIp = ifconfigMatch ? ifconfigMatch[1] : null;
 
-            // Parse routes
-            // Format: push "route 192.168.12.0 255.255.255.0"
             const routeMatches = [...decoded.matchAll(/push\s+"route\s+([\d.]+)\s+([\d.]+)"/g)];
             const routes = routeMatches.map(m => `${m[1]}/${netmaskToCidr(m[2])}`).join(",");
 
