@@ -354,8 +354,8 @@ export async function registerRoutes(
             status: "offline",
           });
         } else if (event.type === "USERS_UPDATE") {
-          // Handle Bulk Initial Update (Creation allowed here)
-          if (event.action === "INITIAL" && event.users) {
+          // Handle Bulk Update (Creation allowed for INITIAL or ADDED)
+          if ((event.action === "INITIAL" || event.action === "ADDED") && event.users) {
             for (const user of event.users) {
               let u = await storage.getVpnUserByCommonNameAndServer(serverId, user.common_name);
               const data = {

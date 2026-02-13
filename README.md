@@ -123,21 +123,24 @@ The portal enforces strict VPN user identification to prevent data pollution fro
 }
 ```
 
-**New User Discovery (User Creation):**
+**New User Discovery (Periodic Scan with ADDED action):**
 ```json
 {
-  "server_id": "vpn-node-01",
-  "sent_at": "2026-02-13T12:08:00Z",
-  "events": [
+  "event_id": "b0ca3d8f-3f81-41cb-8e23-18cdbed4f5bb",
+  "type": "USERS_UPDATE",
+  "action": "ADDED",
+  "source": "index.txt",
+  "event_time_agent": "2026-02-13T12:10:05Z",
+  "users": [
     {
-      "event_id": "uuid-added-1",
-      "type": "USERS_UPDATE",
-      "common_name": "diana",
+      "common_name": "alice",
       "status": "VALID",
-      "action": "ADDED",
-      "source": "index.txt",
-      "expires_at_index": "291231235959Z",
-      "event_time_agent": "2026-02-13T12:08:00Z"
+      "expires_at_index": "290124060904Z"
+    },
+    {
+      "common_name": "bob",
+      "status": "VALID",
+      "expires_at_index": "290124092711Z"
     }
   ]
 }
