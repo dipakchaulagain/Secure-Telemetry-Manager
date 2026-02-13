@@ -104,7 +104,7 @@ The portal enforces strict VPN user identification to prevent data pollution fro
 }
 ```
 
-**Individual Incremental Update:**
+**Individual Incremental Update (Existing User):**
 ```json
 {
   "server_id": "vpn-node-01",
@@ -118,6 +118,26 @@ The portal enforces strict VPN user identification to prevent data pollution fro
       "action": "REVOKED",
       "revoked_at_index": "221206054507Z",
       "event_time_agent": "2026-02-13T12:05:00Z"
+    }
+  ]
+}
+```
+
+**New User Discovery (User Creation):**
+```json
+{
+  "server_id": "vpn-node-01",
+  "sent_at": "2026-02-13T12:08:00Z",
+  "events": [
+    {
+      "event_id": "uuid-added-1",
+      "type": "USERS_UPDATE",
+      "common_name": "diana",
+      "status": "VALID",
+      "action": "ADDED",
+      "source": "index.txt",
+      "expires_at_index": "291231235959Z",
+      "event_time_agent": "2026-02-13T12:08:00Z"
     }
   ]
 }
